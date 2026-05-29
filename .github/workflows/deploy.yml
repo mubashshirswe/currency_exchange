@@ -108,10 +108,13 @@ jobs:
             set -e
             DEPLOY="${{ secrets.DEPLOY_PATH }}"
             mkdir -p "$DEPLOY/scripts" "$DEPLOY/backups"
-            if [ ! -w "$DEPLOY" ]; then
-              sudo chown -R "$(whoami):$(whoami)" "$DEPLOY"
-            fi
-            chmod u+w "$DEPLOY" "$DEPLOY/scripts" 2>/dev/null || true
+            # Mavjud fayllar (restore.sh, scripts/*) boshqa egaga (root) tegishli bo'lishi
+            # mumkin — bunda scp/tar ularni qayta yoza olmaydi ("Permission denied").
+            # Shuning uchun egalik va yozish huquqini REKURSIV va SHARTSIZ ta'minlaymiz.
+            sudo chown -R "$(whoami):$(whoami)" "$DEPLOY" 2>/dev/null \
+              || chown -R "$(whoami):$(whoami)" "$DEPLOY" 2>/dev/null || true
+            sudo chmod -R u+rwX "$DEPLOY" 2>/dev/null \
+              || chmod -R u+rwX "$DEPLOY" 2>/dev/null || true
             sudo usermod -aG docker "$(whoami)" 2>/dev/null || true
 
       - name: Copy files to server
