@@ -127,17 +127,17 @@ func NewStorage(db *sql.DB) Storage {
 	dbwrapper := &DBWrapper{db: db}
 
 	return Storage{
-		DB:             db,
-		Debts:          &DebtsStorage{db: dbwrapper},
-		Exchanges:      &ExchangeStorage{db: dbwrapper},
-		Debtors:        &DebtorsStorage{db: dbwrapper},
-		Users:          &UserStorage{db: dbwrapper},
-		Transactions:   &TransactionStorage{db: dbwrapper},
+		DB:              db,
+		Debts:           &DebtsStorage{db: dbwrapper},
+		Exchanges:       &ExchangeStorage{db: dbwrapper},
+		Debtors:         &DebtorsStorage{db: dbwrapper},
+		Users:           &UserStorage{db: dbwrapper},
+		Transactions:    &TransactionStorage{db: dbwrapper},
 		Balances:        &BalanceStorage{db: dbwrapper},
 		CompanyBalances: &CompanyBalanceStorage{db: dbwrapper},
 		Companies:       &CompanyStorage{db: dbwrapper},
-		BalanceRecords: &BalanceRecordStorage{db: dbwrapper},
-		UserSessions:   &UserSessionStorage{db: dbwrapper},
+		BalanceRecords:  &BalanceRecordStorage{db: dbwrapper},
+		UserSessions:    &UserSessionStorage{db: dbwrapper},
 	}
 }
 
