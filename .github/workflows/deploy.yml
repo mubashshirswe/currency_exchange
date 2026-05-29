@@ -93,9 +93,6 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'workflow_dispatch' && inputs.deploy == true) ||
-      vars.AUTO_DEPLOY == 'true'
     steps:
       - uses: actions/checkout@v4
 
