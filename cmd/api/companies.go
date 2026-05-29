@@ -12,6 +12,10 @@ type CompanyPayload struct {
 	Password string `json:"password"`
 }
 
+// defaultCompanyCurrencies — kompaniya yaratilganda 0 balans bilan ochiladigan
+// standart valyutalar (user yaratilishidagi balanslar bilan bir xil).
+var defaultCompanyCurrencies = []string{"USD", "SUM"}
+
 func (app *application) CreateCompanyHandler(w http.ResponseWriter, r *http.Request) {
 	var payload CompanyPayload
 	if err := readJSON(w, r, &payload); err != nil {
@@ -31,6 +35,12 @@ func (app *application) CreateCompanyHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := app.store.Companies.Create(r.Context(), company); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	// Kompaniya bilan birga default company_balances (USD, SUM) 0 balans bilan ochiladi.
+	if err := app.store.CompanyBalances.EnsureDefaults(r.Context(), company.ID, defaultCompanyCurrencies); err != nil {
 		app.internalServerError(w, r, err)
 		return
 	}

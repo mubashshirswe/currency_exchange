@@ -65,18 +65,37 @@ func (s *CompanyBalanceStorage) GetByCompanyIdAndCurrency(ctx context.Context, c
 }
 
 // AggregateByCompanyId — kompaniya balansini user balanslaridan jamlab hisoblaydi
-// (har bir valyuta uchun SUM). company_balances jadvaliga bog'liq emas — drift bo'lmaydi,
-// chunki har bir operatsiya allaqachon balances jadvalini yangilaydi.
+// (har bir valyuta uchun SUM). Drift bo'lmaydi, chunki har bir operatsiya allaqachon
+// balances jadvalini yangilaydi.
+//
+// Valyutalar ro'yxati company_balances (kompaniya yaratilganda ochilgan defaultlar)
+// va balances'dagi valyutalar BIRLASHMASIDAN olinadi — shunda yangi kompaniyada ham
+// USD/SUM 0 balans bilan ko'rinadi, qiymatlar esa balances yig'indisidan keladi.
 func (s *CompanyBalanceStorage) AggregateByCompanyId(ctx context.Context, companyID int64) ([]CompanyBalance, error) {
 	query := `
-		SELECT currency,
-		       COALESCE(SUM(balance), 0)    AS balance,
-		       COALESCE(SUM(in_out_lay), 0) AS in_out_lay,
-		       COALESCE(SUM(out_in_lay), 0) AS out_in_lay
-		FROM balances
-		WHERE company_id = $1 AND currency IS NOT NULL AND currency != ''
-		GROUP BY currency
-		ORDER BY currency`
+		WITH currencies AS (
+			SELECT currency FROM company_balances
+			WHERE company_id = $1 AND currency IS NOT NULL AND currency != ''
+			UNION
+			SELECT currency FROM balances
+			WHERE company_id = $1 AND currency IS NOT NULL AND currency != ''
+		),
+		agg AS (
+			SELECT currency,
+			       COALESCE(SUM(balance), 0)    AS balance,
+			       COALESCE(SUM(in_out_lay), 0) AS in_out_lay,
+			       COALESCE(SUM(out_in_lay), 0) AS out_in_lay
+			FROM balances
+			WHERE company_id = $1 AND currency IS NOT NULL AND currency != ''
+			GROUP BY currency
+		)
+		SELECT c.currency,
+		       COALESCE(a.balance, 0),
+		       COALESCE(a.in_out_lay, 0),
+		       COALESCE(a.out_in_lay, 0)
+		FROM currencies c
+		LEFT JOIN agg a ON a.currency = c.currency
+		ORDER BY c.currency`
 	rows, err := s.db.QueryContext(ctx, query, companyID)
 	if err != nil {
 		return nil, err
