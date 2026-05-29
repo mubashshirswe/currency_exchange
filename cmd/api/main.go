@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/mubashshir3767/currencyExchange/internal/db"
@@ -75,11 +76,14 @@ func main() {
 	service := service.NewService(store, delivered)
 	cacheStore := cache.NewRedisStorage(rdb)
 
+	dedupWindow := time.Duration(env.GetInt("DEDUP_WINDOW_SECONDS", 10)) * time.Second
+
 	app := application{
 		config:     cfg,
 		store:      store,
 		service:    service,
 		cacheStore: cacheStore,
+		dedup:      newIdempotencyGuard(dedupWindow),
 	}
 
 	mux := app.mount()

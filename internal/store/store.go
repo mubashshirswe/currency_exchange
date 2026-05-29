@@ -73,6 +73,15 @@ type Storage struct {
 		Delete(context.Context, int64) error
 	}
 
+	CompanyBalances interface {
+		Create(context.Context, *CompanyBalance) error
+		GetByCompanyIdAndCurrency(context.Context, int64, string) (*CompanyBalance, error)
+		GetByCompanyId(context.Context, int64) ([]CompanyBalance, error)
+		Update(context.Context, *CompanyBalance) error
+		EnsureDefaults(context.Context, int64, []string) error
+		UserActivityByCompany(context.Context, int64) ([]UserActivityRow, error)
+	}
+
 	BalanceRecords interface {
 		Create(context.Context, *BalanceRecord) error
 		GetByField(context.Context, string, any, types.Pagination) ([]BalanceRecord, error)
@@ -124,8 +133,9 @@ func NewStorage(db *sql.DB) Storage {
 		Debtors:        &DebtorsStorage{db: dbwrapper},
 		Users:          &UserStorage{db: dbwrapper},
 		Transactions:   &TransactionStorage{db: dbwrapper},
-		Balances:       &BalanceStorage{db: dbwrapper},
-		Companies:      &CompanyStorage{db: dbwrapper},
+		Balances:        &BalanceStorage{db: dbwrapper},
+		CompanyBalances: &CompanyBalanceStorage{db: dbwrapper},
+		Companies:       &CompanyStorage{db: dbwrapper},
 		BalanceRecords: &BalanceRecordStorage{db: dbwrapper},
 		UserSessions:   &UserSessionStorage{db: dbwrapper},
 	}

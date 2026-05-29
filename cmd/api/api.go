@@ -22,6 +22,7 @@ type application struct {
 	store      store.Storage
 	service    service.Service
 	cacheStore cache.Storage
+	dedup      *idempotencyGuard
 }
 
 type config struct {
@@ -91,7 +92,7 @@ func (app *application) mount() *chi.Mux {
 			})
 
 			r.Route("/exchanges", func(r chi.Router) {
-				r.Post("/", app.CreateExchangeHandler)
+				r.With(app.DedupCreateMiddleware).Post("/", app.CreateExchangeHandler)
 				r.Post("/filter", app.GetExchangesHandler)
 				r.Post("/archive", app.ArchiveExchangesHandler)
 				r.Get("/archived", app.ArchivedExchangesHandler)
@@ -113,8 +114,8 @@ func (app *application) mount() *chi.Mux {
 			})
 
 			r.Route("/debtors", func(r chi.Router) {
-				r.Post("/create", app.CreateDebtorsHandler)
-				r.Post("/transaction", app.CreateDebtorTransactionHandler)
+				r.With(app.DedupCreateMiddleware).Post("/create", app.CreateDebtorsHandler)
+				r.With(app.DedupCreateMiddleware).Post("/transaction", app.CreateDebtorTransactionHandler)
 				r.Get("/company/{id}", app.GetDebtorsByCompanyIdHandler)
 				r.Get("/info/{id}", app.GetDebtorsTotalBalanceInfo)
 				r.Delete("/{id}", app.DeleteDebtorsHandler)
@@ -127,7 +128,7 @@ func (app *application) mount() *chi.Mux {
 			})
 
 			r.Route("/transactions", func(r chi.Router) {
-				r.Post("/create", app.CreateTransactionHandler)
+				r.With(app.DedupCreateMiddleware).Post("/create", app.CreateTransactionHandler)
 				r.Post("/complete", app.CompleteTransactionHandler)
 				r.Get("/show/process/{id}", app.GetTransactionsCompanyIdHandler)
 				r.Post("/archive", app.ArchiveTransactionsHandler)
@@ -148,6 +149,8 @@ func (app *application) mount() *chi.Mux {
 					r.Get("/", app.GetCompanyByIdHandler)
 					r.Put("/", app.UpdateCompanyHandler)
 					r.Delete("/", app.DeleteCompanyHandler)
+					r.Get("/balances", app.GetCompanyBalancesHandler)
+					r.Get("/users/activity", app.GetCompanyUserActivityHandler)
 				})
 			})
 		})
