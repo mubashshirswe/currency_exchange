@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
+
+	"github.com/mubashshir3767/currencyExchange/internal/types"
 )
 
 type CompanyBalance struct {
@@ -59,6 +62,98 @@ func (s *CompanyBalanceStorage) lookup(ctx context.Context, companyID int64, cur
 
 func (s *CompanyBalanceStorage) GetByCompanyIdAndCurrency(ctx context.Context, companyID int64, currency string) (*CompanyBalance, error) {
 	return s.lookup(ctx, companyID, currency)
+}
+
+// AggregateByCompanyId — kompaniya balansini user balanslaridan jamlab hisoblaydi
+// (har bir valyuta uchun SUM). company_balances jadvaliga bog'liq emas — drift bo'lmaydi,
+// chunki har bir operatsiya allaqachon balances jadvalini yangilaydi.
+func (s *CompanyBalanceStorage) AggregateByCompanyId(ctx context.Context, companyID int64) ([]CompanyBalance, error) {
+	query := `
+		SELECT currency,
+		       COALESCE(SUM(balance), 0)    AS balance,
+		       COALESCE(SUM(in_out_lay), 0) AS in_out_lay,
+		       COALESCE(SUM(out_in_lay), 0) AS out_in_lay
+		FROM balances
+		WHERE company_id = $1 AND currency IS NOT NULL AND currency != ''
+		GROUP BY currency
+		ORDER BY currency`
+	rows, err := s.db.QueryContext(ctx, query, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []CompanyBalance{}
+	for rows.Next() {
+		cb := CompanyBalance{CompanyID: companyID}
+		if err := rows.Scan(&cb.Currency, &cb.Balance, &cb.InOutLay, &cb.OutInLay); err != nil {
+			return nil, err
+		}
+		out = append(out, cb)
+	}
+	return out, rows.Err()
+}
+
+// CompanyBalanceRecordRow — kompaniya balansiga kirim/chiqim qatori,
+// operatsiyani bajargan hodim (user_id + username) bilan birga.
+type CompanyBalanceRecordRow struct {
+	ID                 int64  `json:"id"`
+	Amount             int64  `json:"amount"`
+	UserID             int64  `json:"user_id"`
+	Username           string `json:"username"`
+	Currency           string `json:"currency"`
+	Type               int64  `json:"type"`
+	Details            string `json:"details"`
+	TransactionId      *int64 `json:"transaction_id"`
+	DebtId             *int64 `json:"debt_id"`
+	ExchangeId         *int64 `json:"exchange_id"`
+	CreatedAtFormatted string `json:"created_at"`
+}
+
+// ListRecordsByCompanyAndCurrency — kompaniya bo'yicha balance_records ro'yxati.
+// currency bo'sh bo'lmasa, faqat o'sha valyuta qatorlari qaytadi.
+func (s *CompanyBalanceStorage) ListRecordsByCompanyAndCurrency(ctx context.Context, companyID int64, currency string, pagination types.Pagination) ([]CompanyBalanceRecordRow, error) {
+	query := `
+		SELECT br.id, br.amount, br.user_id, COALESCE(u.username, ''),
+		       br.currency, br.type, COALESCE(br.details, ''),
+		       br.transaction_id, br.debt_id, br.exchange_id, br.created_at
+		FROM balance_records br
+		LEFT JOIN users u ON u.id = br.user_id
+		WHERE br.company_id = $1 AND br.status != $2 AND br.amount != 0`
+	args := []any{companyID, STATUS_ARCHIVED}
+	if currency != "" {
+		query += " AND br.currency = $3"
+		args = append(args, currency)
+	}
+	query += " ORDER BY br.created_at DESC"
+	query += fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+	out := []CompanyBalanceRecordRow{}
+	for rows.Next() {
+		var r CompanyBalanceRecordRow
+		var createdAt time.Time
+		if err := rows.Scan(
+			&r.ID, &r.Amount, &r.UserID, &r.Username,
+			&r.Currency, &r.Type, &r.Details,
+			&r.TransactionId, &r.DebtId, &r.ExchangeId, &createdAt,
+		); err != nil {
+			return nil, err
+		}
+		if loc != nil {
+			r.CreatedAtFormatted = createdAt.In(loc).Format("2006-01-02 15:04:05")
+		} else {
+			r.CreatedAtFormatted = createdAt.Format("2006-01-02 15:04:05")
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 func (s *CompanyBalanceStorage) GetByCompanyId(ctx context.Context, companyID int64) ([]CompanyBalance, error) {

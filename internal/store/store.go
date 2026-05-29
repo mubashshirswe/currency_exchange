@@ -77,6 +77,8 @@ type Storage struct {
 		Create(context.Context, *CompanyBalance) error
 		GetByCompanyIdAndCurrency(context.Context, int64, string) (*CompanyBalance, error)
 		GetByCompanyId(context.Context, int64) ([]CompanyBalance, error)
+		AggregateByCompanyId(context.Context, int64) ([]CompanyBalance, error)
+		ListRecordsByCompanyAndCurrency(context.Context, int64, string, types.Pagination) ([]CompanyBalanceRecordRow, error)
 		Update(context.Context, *CompanyBalance) error
 		EnsureDefaults(context.Context, int64, []string) error
 		UserActivityByCompany(context.Context, int64) ([]UserActivityRow, error)

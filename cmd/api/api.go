@@ -70,6 +70,10 @@ func (app *application) mount() *chi.Mux {
 			r.Put("/{id}", app.UpdateUserHandler)
 			r.Delete("/{id}", app.DeleteUserHandler)
 
+			// Kompaniya balansi (joriy foydalanuvchi kompaniyasi bo'yicha)
+			r.Get("/company-balances", app.GetMyCompanyBalancesHandler)
+			r.Get("/company-balance-records", app.GetMyCompanyBalanceRecordsHandler)
+
 			r.Route("/sessions", func(r chi.Router) {
 				r.Post("/", app.UpsertUserSessionHandler)
 				r.Get("/", app.ListUserSessionsHandler)
@@ -150,6 +154,7 @@ func (app *application) mount() *chi.Mux {
 					r.Put("/", app.UpdateCompanyHandler)
 					r.Delete("/", app.DeleteCompanyHandler)
 					r.Get("/balances", app.GetCompanyBalancesHandler)
+					r.Get("/balance-records", app.GetCompanyBalanceRecordsHandler)
 					r.Get("/users/activity", app.GetCompanyUserActivityHandler)
 				})
 			})
