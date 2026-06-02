@@ -101,6 +101,19 @@ func (s *DebtorsStorage) GetByCompanyId(
 	pagination types.Pagination,
 ) ([]Debtors, error) {
 
+	// ------------------------
+	// DATE FILTER (DAILY VIEW)
+	// ------------------------
+	// Kunlik "Bugungi qarzlar" ko'rinishi uchun debtor created_at emas,
+	// balki o'sha kunda bo'lgan debt amallari (debts.created_at) bo'yicha
+	// filtrlanadi. Shu sababli yangi qarz (yangi debtor) ham, mavjud
+	// debtorga qo'shilgan qo'shimcha qarz (sub debt / transaction) ham
+	// ko'rinadi. Balance sifatida o'sha kunning sof o'zgarishi (signed
+	// debted_amount yig'indisi) qaytariladi, shunda analitika to'g'ri bo'ladi.
+	if dateFilter != nil && *dateFilter != "" {
+		return s.getDailyByCompanyId(ctx, companyId, search, *dateFilter, pagination)
+	}
+
 	query := `
         SELECT DISTINCT
             d.id,
@@ -134,45 +147,6 @@ func (s *DebtorsStorage) GetByCompanyId(
 
 		args = append(args, searchLike)
 		argIndex++
-	}
-
-	// ------------------------
-	// DATE FILTER (FIXED)
-	// ------------------------
-	// created_at Tashkent time da saqlangan
-	// request ham Tashkent time
-	// timezone conversion kerak emas
-	// index-friendly range filter ishlatyapmiz
-	if dateFilter != nil && *dateFilter != "" {
-
-		loc, err := time.LoadLocation("Asia/Tashkent")
-		if err != nil {
-			return nil, fmt.Errorf("timezone load error: %w", err)
-		}
-
-		// Parse as Tashkent time
-		localDate, err := time.ParseInLocation("2006-01-02", *dateFilter, loc)
-		if err != nil {
-			return nil, fmt.Errorf("invalid date format (YYYY-MM-DD): %w", err)
-		}
-
-		startOfDay := time.Date(
-			localDate.Year(),
-			localDate.Month(),
-			localDate.Day(),
-			0, 0, 0, 0,
-			loc,
-		)
-
-		endOfDay := startOfDay.Add(24 * time.Hour)
-
-		query += fmt.Sprintf(`
-        AND d.created_at >= $%d
-        AND d.created_at < $%d
-    `, argIndex, argIndex+1)
-
-		args = append(args, startOfDay, endOfDay)
-		argIndex += 2
 	}
 
 	// ------------------------
@@ -217,6 +191,122 @@ func (s *DebtorsStorage) GetByCompanyId(
 		}
 
 		// Format in Tashkent time
+		d.CreatedAtFormatted = d.CreatedAt.In(loc).Format("2006-01-02 15:04:05")
+
+		debtors = append(debtors, d)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return debtors, nil
+}
+
+// getDailyByCompanyId returns debtors that had at least one debt transaction
+// (row in `debts`) on the given date. The returned Balance is the net signed
+// change for that day (SUM of debts.debted_amount), and CreatedAt is the time
+// of the latest transaction that day. This makes both new debts and sub debts
+// (additional transactions on existing debtors) appear in the daily view.
+func (s *DebtorsStorage) getDailyByCompanyId(
+	ctx context.Context,
+	companyId int64,
+	search *string,
+	dateFilter string,
+	pagination types.Pagination,
+) ([]Debtors, error) {
+
+	loc, err := time.LoadLocation("Asia/Tashkent")
+	if err != nil {
+		return nil, fmt.Errorf("timezone load error: %w", err)
+	}
+
+	// Parse as Tashkent time (created_at is stored in Tashkent time).
+	localDate, err := time.ParseInLocation("2006-01-02", dateFilter, loc)
+	if err != nil {
+		return nil, fmt.Errorf("invalid date format (YYYY-MM-DD): %w", err)
+	}
+
+	startOfDay := time.Date(
+		localDate.Year(),
+		localDate.Month(),
+		localDate.Day(),
+		0, 0, 0, 0,
+		loc,
+	)
+	endOfDay := startOfDay.Add(24 * time.Hour)
+
+	// Grouping by the primary key d.id lets us reference other debtor columns
+	// without aggregating them (Postgres functional dependency).
+	query := `
+        SELECT
+            d.id,
+            COALESCE(SUM(dt.debted_amount), 0)::bigint AS balance,
+            d.currency,
+            d.user_id,
+            d.phone,
+            d.company_id,
+            MAX(dt.created_at) AS created_at,
+            d.full_name
+        FROM debtors d
+        JOIN debts dt
+            ON dt.debtor_id = d.id
+            AND dt.created_at >= $2
+            AND dt.created_at < $3
+        WHERE d.company_id = $1
+    `
+
+	args := []interface{}{companyId, startOfDay, endOfDay}
+	argIndex := 4
+
+	if search != nil && *search != "" {
+		searchLike := "%" + *search + "%"
+		query += fmt.Sprintf(`
+            AND (
+                CAST(d.balance AS TEXT) ILIKE $%d OR
+                d.currency ILIKE $%d OR
+                d.phone ILIKE $%d OR
+                d.full_name ILIKE $%d
+            )
+        `, argIndex, argIndex, argIndex, argIndex)
+
+		args = append(args, searchLike)
+		argIndex++
+	}
+
+	// Most recent activity first.
+	query += fmt.Sprintf(`
+        GROUP BY d.id
+        ORDER BY MAX(dt.created_at) DESC
+        OFFSET $%d LIMIT $%d
+    `, argIndex, argIndex+1)
+
+	args = append(args, pagination.Offset, pagination.Limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	var debtors []Debtors
+
+	for rows.Next() {
+		var d Debtors
+
+		if err := rows.Scan(
+			&d.ID,
+			&d.Balance,
+			&d.Currency,
+			&d.UserID,
+			&d.Phone,
+			&d.CompanyID,
+			&d.CreatedAt,
+			&d.FullName,
+		); err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+
 		d.CreatedAtFormatted = d.CreatedAt.In(loc).Format("2006-01-02 15:04:05")
 
 		debtors = append(debtors, d)
