@@ -45,6 +45,11 @@ type Service struct {
 		UpdateCompanyBalanceRecord(context.Context, store.CompanyBalanceRecord) error
 	}
 
+	SoftBalanceRecords interface {
+		PerformSoftBalanceRecord(context.Context, types.CompanyBalanceRecordPayload) error
+		RollbackSoftBalanceRecord(context.Context, int64) error
+	}
+
 	// CompanyOps — v2: exchange/transaction/debt kompaniya balansiga ta'sir qiladi.
 	CompanyOps interface {
 		CreateExchangeV2(context.Context, *store.Exchange) error
@@ -79,6 +84,7 @@ func NewService(store store.Storage, delivered notify.DeliveredUser) Service {
 		Exchanges:             &ExchangeService{store: store},
 		BalanceRecords:        &BalanceRecordService{store: store},
 		CompanyBalanceRecords: &CompanyBalanceRecordService{store: store},
+		SoftBalanceRecords:    &SoftBalanceRecordService{store: store},
 		CompanyOps:            NewCompanyOpsService(store, delivered),
 		Transactions:          NewTransactionService(store, delivered),
 		Debts:                 &DebtsService{store: store},

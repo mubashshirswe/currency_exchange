@@ -93,6 +93,21 @@ type Storage struct {
 		ListByCompany(context.Context, int64, string, types.Pagination) ([]CompanyBalanceRecordRow, error)
 	}
 
+	SoftBalances interface {
+		Create(context.Context, *SoftBalance) error
+		GetByCompanyIdAndCurrency(context.Context, int64, string) (*SoftBalance, error)
+		GetByCompanyId(context.Context, int64) ([]SoftBalance, error)
+		Update(context.Context, *SoftBalance) error
+		EnsureDefaults(context.Context, int64, []string) error
+	}
+
+	SoftBalanceRecords interface {
+		Create(context.Context, *SoftBalanceRecord) error
+		GetById(context.Context, int64) (*SoftBalanceRecord, error)
+		Delete(context.Context, int64) error
+		ListByCompany(context.Context, int64, string, types.Pagination) ([]SoftBalanceRecordRow, error)
+	}
+
 	BalanceRecords interface {
 		Create(context.Context, *BalanceRecord) error
 		GetByField(context.Context, string, any, types.Pagination) ([]BalanceRecord, error)
@@ -147,6 +162,8 @@ func NewStorage(db *sql.DB) Storage {
 		Balances:              &BalanceStorage{db: dbwrapper},
 		CompanyBalances:       &CompanyBalanceStorage{db: dbwrapper},
 		CompanyBalanceRecords: &CompanyBalanceRecordStorage{db: dbwrapper},
+		SoftBalances:          &SoftBalanceStorage{db: dbwrapper},
+		SoftBalanceRecords:    &SoftBalanceRecordStorage{db: dbwrapper},
 		Companies:             &CompanyStorage{db: dbwrapper},
 		BalanceRecords:        &BalanceRecordStorage{db: dbwrapper},
 		UserSessions:          &UserSessionStorage{db: dbwrapper},

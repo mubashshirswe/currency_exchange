@@ -44,6 +44,10 @@ func (app *application) CreateCompanyHandler(w http.ResponseWriter, r *http.Requ
 		app.internalServerError(w, r, err)
 		return
 	}
+	if err := app.store.SoftBalances.EnsureDefaults(r.Context(), company.ID, defaultCompanyCurrencies); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
 
 	if err := app.writeResponse(w, http.StatusOK, company); err != nil {
 		app.internalServerError(w, r, err)

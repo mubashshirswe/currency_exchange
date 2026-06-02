@@ -77,6 +77,12 @@ func (app *application) mount() *chi.Mux {
 			r.Put("/company-balance-records/{id}", app.UpdateMyCompanyBalanceRecordHandler)
 			r.Delete("/company-balance-records/{id}", app.DeleteMyCompanyBalanceRecordHandler)
 
+			// Soft balance — biznes egasining daromadi (mustaqil)
+			r.Get("/soft-balances", app.GetMySoftBalancesHandler)
+			r.Get("/soft-balance-records", app.GetMySoftBalanceRecordsHandler)
+			r.Post("/soft-balance-records", app.CreateMySoftBalanceRecordHandler)
+			r.Delete("/soft-balance-records/{id}", app.DeleteMySoftBalanceRecordHandler)
+
 			r.Route("/sessions", func(r chi.Router) {
 				r.Post("/", app.UpsertUserSessionHandler)
 				r.Get("/", app.ListUserSessionsHandler)
