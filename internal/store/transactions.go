@@ -430,11 +430,12 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 }
 
 type CompanyAmount struct {
-	CompanyName    string
-	Currency       string
-	OlinganAmount  float64
-	BerilganAmount float64
-	Remain         float64
+	CompanyName      string
+	Currency         string
+	OlinganAmount    float64
+	BerilganAmount   float64
+	Remain           float64
+	ServiceFeeAmount float64
 }
 
 func (s *TransactionStorage) GetCompanyFinalAmounts(ctx context.Context, companyIDs []int64, date string) ([]CompanyAmount, error) {
@@ -511,7 +512,29 @@ select
             when a.type = 2 then a.delivered_amount
             else 0
         end
-    ),0) as remain
+    ),0) as remain,
+
+    -- Kunlik xizmat haqi (yakunlangan -> delivered, kutilayotgan -> received)
+    coalesce((
+        select sum(
+            case
+                when t.delivered_user_id is not null and t.delivered_company_id = a.company_id
+                    then t.service_fee_amount
+                when t.delivered_user_id is null and t.received_company_id = a.company_id
+                    then t.service_fee_amount
+                else 0
+            end
+        )::float
+        from transactions t
+        where t.service_fee_amount > 0
+          and t.status != 3
+          and upper(coalesce(nullif(trim(t.service_fee_currency), ''), 'SUM')) = upper(a.currency)
+          and (t.created_at AT TIME ZONE 'Asia/Tashkent')::date = $2::date
+          and (
+              t.delivered_company_id = ANY($1)
+              or t.received_company_id = ANY($1)
+          )
+    ), 0) as service_fee_amount
 
 from all_outcomes a
 join companies c on c.id = a.company_id
@@ -528,7 +551,14 @@ order by a.company_id, a.currency;
 	var results []CompanyAmount
 	for rows.Next() {
 		var ca CompanyAmount
-		if err := rows.Scan(&ca.CompanyName, &ca.Currency, &ca.OlinganAmount, &ca.BerilganAmount, &ca.Remain); err != nil {
+		if err := rows.Scan(
+			&ca.CompanyName,
+			&ca.Currency,
+			&ca.OlinganAmount,
+			&ca.BerilganAmount,
+			&ca.Remain,
+			&ca.ServiceFeeAmount,
+		); err != nil {
 			return nil, err
 		}
 		results = append(results, ca)
