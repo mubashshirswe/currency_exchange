@@ -158,6 +158,8 @@ func (app *application) UpdateExchangeHandler(w http.ResponseWriter, r *http.Req
 		ReceivedCurrency: payload.ReceivedCurrency,
 		SelledMoney:      payload.SelledMoney,
 		SelledCurrency:   payload.SelledCurrency,
+		ProfitAmount:     payload.ProfitAmount,
+		ProfitCurrency:   payload.ProfitCurrency,
 		UserId:           payload.UserId,
 		Details:          payload.Details,
 		CompanyID:        *payload.CompanyID,
