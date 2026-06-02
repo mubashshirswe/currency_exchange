@@ -4,7 +4,7 @@ MIGRATIONS_PATH = ./cmd/migrate/migrations
 # --- DB: eski server (47.236.63.18) -> Mac -> yangi server (mubashshir) ---
 OLD_HOST        ?= root@47.236.63.18
 OLD_PATH        ?= /root/CurrencyExchange/deploy/server
-NEW_HOST        ?= mubashshir
+NEW_HOST        ?= swe
 NEW_PATH        ?= /app/backend/currency-exchange
 LOCAL_BACKUPS   ?= ./backups
 
