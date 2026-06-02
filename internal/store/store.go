@@ -105,6 +105,7 @@ type Storage struct {
 		Create(context.Context, *SoftBalanceRecord) error
 		GetById(context.Context, int64) (*SoftBalanceRecord, error)
 		Delete(context.Context, int64) error
+		ListByLink(context.Context, string, int64) ([]SoftBalanceRecord, error)
 		ListByCompany(context.Context, int64, string, types.Pagination) ([]SoftBalanceRecordRow, error)
 	}
 

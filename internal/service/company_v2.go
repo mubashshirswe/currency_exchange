@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mubashshir3767/currencyExchange/internal/notify"
@@ -121,6 +122,118 @@ func reverseAndDeleteByLink(
 	return nil
 }
 
+func isSumToUsdExchange(exchange *store.Exchange) bool {
+	return strings.EqualFold(exchange.ReceivedCurrency, "USD") &&
+		strings.EqualFold(exchange.SelledCurrency, "SUM")
+}
+
+func exchangeSoftProfit(exchange *store.Exchange) (int64, string, bool) {
+	if !isSumToUsdExchange(exchange) || exchange.ProfitAmount <= 0 {
+		return 0, "", false
+	}
+	cur := strings.ToUpper(strings.TrimSpace(exchange.ProfitCurrency))
+	if cur != "USD" && cur != "SUM" {
+		return 0, "", false
+	}
+	return exchange.ProfitAmount, cur, true
+}
+
+func applySoftBalanceOp(
+	ctx context.Context,
+	sbStorage *store.SoftBalanceStorage,
+	sbrStorage *store.SoftBalanceRecordStorage,
+	companyID, userID int64,
+	currency string,
+	amount int64,
+	details string,
+	exchangeID *int64,
+) error {
+	if amount <= 0 {
+		return nil
+	}
+
+	sb, err := sbStorage.GetByCompanyIdAndCurrency(ctx, companyID, currency)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			return err
+		}
+		sb = &store.SoftBalance{CompanyID: companyID, Currency: currency}
+		if cerr := sbStorage.Create(ctx, sb); cerr != nil {
+			return cerr
+		}
+	}
+
+	if err := applySoftBalance(sb, TYPE_BUY, amount); err != nil {
+		return err
+	}
+	if err := sbStorage.Update(ctx, sb); err != nil {
+		return err
+	}
+
+	rec := &store.SoftBalanceRecord{
+		CompanyID:     companyID,
+		UserID:        userID,
+		SoftBalanceID: sb.ID,
+		Amount:        amount,
+		Currency:      currency,
+		Type:          TYPE_BUY,
+		Details:       details,
+		Status:        store.STATUS_CREATED,
+		ExchangeId:    exchangeID,
+	}
+	return sbrStorage.Create(ctx, rec)
+}
+
+func reverseAndDeleteSoftByLink(
+	ctx context.Context,
+	sbStorage *store.SoftBalanceStorage,
+	sbrStorage *store.SoftBalanceRecordStorage,
+	field string,
+	id int64,
+) error {
+	recs, err := sbrStorage.ListByLink(ctx, field, id)
+	if err != nil {
+		return err
+	}
+	for _, rec := range recs {
+		cb, err := sbStorage.GetByCompanyIdAndCurrency(ctx, rec.CompanyID, rec.Currency)
+		if err != nil {
+			return err
+		}
+		if err := reverseSoftBalance(cb, rec.Type, rec.Amount); err != nil {
+			return err
+		}
+		if err := sbStorage.Update(ctx, cb); err != nil {
+			return err
+		}
+		if err := sbrStorage.Delete(ctx, rec.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyExchangeSoftProfit(
+	ctx context.Context,
+	sbStorage *store.SoftBalanceStorage,
+	sbrStorage *store.SoftBalanceRecordStorage,
+	exchange *store.Exchange,
+) error {
+	amount, currency, ok := exchangeSoftProfit(exchange)
+	if !ok {
+		return nil
+	}
+	details := fmt.Sprintf("Exchange foyda #%d", exchange.ID)
+	if exchange.Details != "" && exchange.Details != "COMMENT" {
+		details = exchange.Details
+	}
+	return applySoftBalanceOp(
+		ctx, sbStorage, sbrStorage,
+		exchange.CompanyID, exchange.UserId,
+		currency, amount, details, &exchange.ID,
+	)
+}
+
 // CreateExchangeV2 — exchange yaratadi va kompaniya balansiga ta'sir qiladi.
 // received => kirim (BUY), selled => chiqim (SELL). exchange.UserId = amalni bajargan hodim.
 func (s *CompanyOpsService) CreateExchangeV2(ctx context.Context, exchange *store.Exchange) error {
@@ -138,6 +251,8 @@ func (s *CompanyOpsService) CreateExchangeV2(ctx context.Context, exchange *stor
 	exchangeStore := store.NewExchangeStorage(tx)
 	cbStorage := store.NewCompanyBalanceStorage(tx)
 	cbrStorage := store.NewCompanyBalanceRecordStorage(tx)
+	sbStorage := store.NewSoftBalanceStorage(tx)
+	sbrStorage := store.NewSoftBalanceRecordStorage(tx)
 
 	exchange.CompanyID = companyID
 	if err := exchangeStore.Create(ctx, exchange); err != nil {
@@ -153,6 +268,10 @@ func (s *CompanyOpsService) CreateExchangeV2(ctx context.Context, exchange *stor
 
 	if err := applyCompanyOp(ctx, cbStorage, cbrStorage, companyID, exchange.UserId,
 		exchange.SelledCurrency, exchange.SelledMoney, TYPE_SELL, exchange.Details, link); err != nil {
+		return err
+	}
+
+	if err := applyExchangeSoftProfit(ctx, sbStorage, sbrStorage, exchange); err != nil {
 		return err
 	}
 
@@ -176,8 +295,13 @@ func (s *CompanyOpsService) UpdateExchangeV2(ctx context.Context, exchange *stor
 	exchangeStore := store.NewExchangeStorage(tx)
 	cbStorage := store.NewCompanyBalanceStorage(tx)
 	cbrStorage := store.NewCompanyBalanceRecordStorage(tx)
+	sbStorage := store.NewSoftBalanceStorage(tx)
+	sbrStorage := store.NewSoftBalanceRecordStorage(tx)
 
 	if err := reverseAndDeleteByLink(ctx, cbStorage, cbrStorage, "exchange_id", exchange.ID); err != nil {
+		return err
+	}
+	if err := reverseAndDeleteSoftByLink(ctx, sbStorage, sbrStorage, "exchange_id", exchange.ID); err != nil {
 		return err
 	}
 
@@ -195,6 +319,9 @@ func (s *CompanyOpsService) UpdateExchangeV2(ctx context.Context, exchange *stor
 		exchange.SelledCurrency, exchange.SelledMoney, TYPE_SELL, exchange.Details, link); err != nil {
 		return err
 	}
+	if err := applyExchangeSoftProfit(ctx, sbStorage, sbrStorage, exchange); err != nil {
+		return err
+	}
 
 	return tx.Commit()
 }
@@ -210,8 +337,13 @@ func (s *CompanyOpsService) DeleteExchangeV2(ctx context.Context, id int64) erro
 	exchangeStore := store.NewExchangeStorage(tx)
 	cbStorage := store.NewCompanyBalanceStorage(tx)
 	cbrStorage := store.NewCompanyBalanceRecordStorage(tx)
+	sbStorage := store.NewSoftBalanceStorage(tx)
+	sbrStorage := store.NewSoftBalanceRecordStorage(tx)
 
 	if err := reverseAndDeleteByLink(ctx, cbStorage, cbrStorage, "exchange_id", id); err != nil {
+		return err
+	}
+	if err := reverseAndDeleteSoftByLink(ctx, sbStorage, sbrStorage, "exchange_id", id); err != nil {
 		return err
 	}
 	if err := exchangeStore.Delete(ctx, id); err != nil {

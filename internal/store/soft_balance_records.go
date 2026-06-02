@@ -9,16 +9,17 @@ import (
 )
 
 type SoftBalanceRecord struct {
-	ID             int64  `json:"id"`
-	CompanyID      int64  `json:"company_id"`
-	UserID         int64  `json:"user_id"`
-	SoftBalanceID  int64  `json:"soft_balance_id"`
-	Amount         int64  `json:"amount"`
-	Currency       string `json:"currency"`
-	Type           int64  `json:"type"`
-	Details        string `json:"details"`
-	Status         int64  `json:"status"`
-	CreatedAt      string `json:"created_at"`
+	ID            int64  `json:"id"`
+	CompanyID     int64  `json:"company_id"`
+	UserID        int64  `json:"user_id"`
+	SoftBalanceID int64  `json:"soft_balance_id"`
+	Amount        int64  `json:"amount"`
+	Currency      string `json:"currency"`
+	Type          int64  `json:"type"`
+	Details       string `json:"details"`
+	Status        int64  `json:"status"`
+	ExchangeId    *int64 `json:"exchange_id"`
+	CreatedAt     string `json:"created_at"`
 }
 
 type SoftBalanceRecordRow struct {
@@ -42,11 +43,11 @@ func NewSoftBalanceRecordStorage(db DBTX) *SoftBalanceRecordStorage {
 
 func (s *SoftBalanceRecordStorage) Create(ctx context.Context, r *SoftBalanceRecord) error {
 	query := `INSERT INTO soft_balance_records
-		(company_id, user_id, soft_balance_id, amount, currency, type, details, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		(company_id, user_id, soft_balance_id, amount, currency, type, details, status, exchange_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, created_at`
 	return s.db.QueryRowContext(ctx, query,
-		r.CompanyID, r.UserID, r.SoftBalanceID, r.Amount, r.Currency, r.Type, r.Details, r.Status,
+		r.CompanyID, r.UserID, r.SoftBalanceID, r.Amount, r.Currency, r.Type, r.Details, r.Status, r.ExchangeId,
 	).Scan(&r.ID, &r.CreatedAt)
 }
 
@@ -68,6 +69,31 @@ func (s *SoftBalanceRecordStorage) GetById(ctx context.Context, id int64) (*Soft
 func (s *SoftBalanceRecordStorage) Delete(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM soft_balance_records WHERE id = $1`, id)
 	return err
+}
+
+func (s *SoftBalanceRecordStorage) ListByLink(ctx context.Context, field string, id int64) ([]SoftBalanceRecord, error) {
+	query := fmt.Sprintf(`SELECT id, company_id, user_id, COALESCE(soft_balance_id, 0),
+		amount, currency, type, COALESCE(details, ''), status, exchange_id, created_at
+		FROM soft_balance_records WHERE %s = $1`, field)
+
+	rows, err := s.db.QueryContext(ctx, query, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []SoftBalanceRecord{}
+	for rows.Next() {
+		var r SoftBalanceRecord
+		if err := rows.Scan(
+			&r.ID, &r.CompanyID, &r.UserID, &r.SoftBalanceID,
+			&r.Amount, &r.Currency, &r.Type, &r.Details, &r.Status, &r.ExchangeId, &r.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 func (s *SoftBalanceRecordStorage) ListByCompany(

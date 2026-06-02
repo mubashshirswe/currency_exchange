@@ -14,6 +14,8 @@ type Exchange struct {
 	ReceivedCurrency   string    `json:"received_currency"`
 	SelledMoney        int64     `json:"selled_money"`
 	SelledCurrency     string    `json:"selled_currency"`
+	ProfitAmount       int64     `json:"profit_amount"`
+	ProfitCurrency     string    `json:"profit_currency"`
 	UserId             int64     `json:"user_id"`
 	Details            string    `json:"details"`
 	CompanyID          int64     `json:"company_id"`
@@ -50,8 +52,9 @@ func (s *ExchangeStorage) Archive(ctx context.Context, companyId int64) error {
 }
 
 func (s *ExchangeStorage) Create(ctx context.Context, exchange *Exchange) error {
-	query := `INSERT INTO exchanges(received_money, received_currency, selled_money, selled_currency, user_id, company_id, details, status)
-				VALUES($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, created_at`
+	query := `INSERT INTO exchanges(received_money, received_currency, selled_money, selled_currency,
+				profit_amount, profit_currency, user_id, company_id, details, status)
+				VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at`
 
 	err := s.db.QueryRowContext(
 		ctx,
@@ -60,6 +63,8 @@ func (s *ExchangeStorage) Create(ctx context.Context, exchange *Exchange) error 
 		exchange.ReceivedCurrency,
 		exchange.SelledMoney,
 		exchange.SelledCurrency,
+		exchange.ProfitAmount,
+		exchange.ProfitCurrency,
 		exchange.UserId,
 		exchange.CompanyID,
 		exchange.Details,
@@ -75,8 +80,8 @@ func (s *ExchangeStorage) Create(ctx context.Context, exchange *Exchange) error 
 func (s *ExchangeStorage) Update(ctx context.Context, exchange *Exchange) error {
 	query := `
 				UPDATE exchanges SET received_money = $1, received_currency = $2, 
-				selled_money = $3, selled_currency = $4, user_id = $5, company_id = $6, 
-				details = $7 WHERE id  = $8`
+				selled_money = $3, selled_currency = $4, profit_amount = $5, profit_currency = $6,
+				user_id = $7, company_id = $8, details = $9 WHERE id = $10`
 
 	rows, err := s.db.ExecContext(
 		ctx,
@@ -85,6 +90,8 @@ func (s *ExchangeStorage) Update(ctx context.Context, exchange *Exchange) error 
 		exchange.ReceivedCurrency,
 		exchange.SelledMoney,
 		exchange.SelledCurrency,
+		exchange.ProfitAmount,
+		exchange.ProfitCurrency,
 		exchange.UserId,
 		exchange.CompanyID,
 		exchange.Details,
@@ -108,7 +115,7 @@ func (s *ExchangeStorage) Update(ctx context.Context, exchange *Exchange) error 
 func (s *ExchangeStorage) Archived(ctx context.Context, pagination types.Pagination) ([]Exchange, error) {
 	query := `
 				SELECT id, received_money, received_currency, selled_money,
-				selled_currency, user_id, company_id, details, created_at 
+				selled_currency, profit_amount, profit_currency, user_id, company_id, details, created_at 
 				FROM exchanges WHERE status = $1  	ORDER BY created_at DESC
 	` + fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
 
@@ -131,6 +138,8 @@ func (s *ExchangeStorage) Archived(ctx context.Context, pagination types.Paginat
 			&exchage.ReceivedCurrency,
 			&exchage.SelledMoney,
 			&exchage.SelledCurrency,
+			&exchage.ProfitAmount,
+			&exchage.ProfitCurrency,
 			&exchage.UserId,
 			&exchage.CompanyID,
 			&exchage.Details,
@@ -153,7 +162,7 @@ func (s *ExchangeStorage) Archived(ctx context.Context, pagination types.Paginat
 func (s *ExchangeStorage) GetByField(ctx context.Context, fieldName string, fieldValue any, pagination types.Pagination) ([]Exchange, error) {
 	query := `
 				SELECT id, received_money, received_currency, selled_money,
-				selled_currency, user_id, company_id, details, created_at 
+				selled_currency, profit_amount, profit_currency, user_id, company_id, details, created_at 
 				FROM exchanges WHERE status != $1 AND ` + fmt.Sprintf(" %v = %v ORDER BY created_at DESC OFFSET %v LIMIT %v", fieldName, fieldValue, pagination.Offset, pagination.Limit)
 
 	rows, err := s.db.QueryContext(
@@ -175,6 +184,8 @@ func (s *ExchangeStorage) GetByField(ctx context.Context, fieldName string, fiel
 			&exchage.ReceivedCurrency,
 			&exchage.SelledMoney,
 			&exchage.SelledCurrency,
+			&exchage.ProfitAmount,
+			&exchage.ProfitCurrency,
 			&exchage.UserId,
 			&exchage.CompanyID,
 			&exchage.Details,
@@ -197,7 +208,7 @@ func (s *ExchangeStorage) GetByField(ctx context.Context, fieldName string, fiel
 func (s *ExchangeStorage) GetById(ctx context.Context, id int64) (*Exchange, error) {
 	query := `
 				SELECT id, received_money, received_currency, selled_money, 
-				selled_currency, user_id, company_id, details, created_at 
+				selled_currency, profit_amount, profit_currency, user_id, company_id, details, created_at 
 				FROM exchanges WHERE id = $1`
 
 	exchage := &Exchange{}
@@ -212,6 +223,8 @@ func (s *ExchangeStorage) GetById(ctx context.Context, id int64) (*Exchange, err
 		&exchage.ReceivedCurrency,
 		&exchage.SelledMoney,
 		&exchage.SelledCurrency,
+		&exchage.ProfitAmount,
+		&exchage.ProfitCurrency,
 		&exchage.UserId,
 		&exchage.CompanyID,
 		&exchage.Details,

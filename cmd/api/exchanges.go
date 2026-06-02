@@ -12,6 +12,8 @@ type ExchangePayload struct {
 	ReceivedCurrency string `json:"received_currency"`
 	SelledMoney      int64  `json:"selled_money"`
 	SelledCurrency   string `json:"selled_currency"`
+	ProfitAmount     int64  `json:"profit_amount"`
+	ProfitCurrency   string `json:"profit_currency"`
 	UserId           int64  `json:"user_id"`
 	CompanyID        *int64 `json:"company_id"`
 	Details          string `json:"details"`
@@ -29,6 +31,8 @@ func (app *application) CreateExchangeHandler(w http.ResponseWriter, r *http.Req
 		ReceivedCurrency: payload.ReceivedCurrency,
 		SelledMoney:      payload.SelledMoney,
 		SelledCurrency:   payload.SelledCurrency,
+		ProfitAmount:     payload.ProfitAmount,
+		ProfitCurrency:   payload.ProfitCurrency,
 		UserId:           payload.UserId,
 		Details:          payload.Details,
 	}
@@ -59,6 +63,8 @@ func (app *application) CreateExchangeV2Handler(w http.ResponseWriter, r *http.R
 		ReceivedCurrency: payload.ReceivedCurrency,
 		SelledMoney:      payload.SelledMoney,
 		SelledCurrency:   payload.SelledCurrency,
+		ProfitAmount:     payload.ProfitAmount,
+		ProfitCurrency:   payload.ProfitCurrency,
 		UserId:           userID,
 		Details:          payload.Details,
 	}
@@ -88,6 +94,8 @@ func (app *application) UpdateExchangeV2Handler(w http.ResponseWriter, r *http.R
 		ReceivedCurrency: payload.ReceivedCurrency,
 		SelledMoney:      payload.SelledMoney,
 		SelledCurrency:   payload.SelledCurrency,
+		ProfitAmount:     payload.ProfitAmount,
+		ProfitCurrency:   payload.ProfitCurrency,
 		UserId:           userID,
 		Details:          payload.Details,
 	}
