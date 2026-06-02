@@ -11,7 +11,9 @@ import (
 )
 
 type TransactionPayload struct {
-	ServiceFee         any                       `json:"service_fee"`
+	ServiceFeeAmount   int64                     `json:"service_fee_amount"`
+	ServiceFeeCurrency string                    `json:"service_fee_currency"`
+	ServiceFeeDetails  string                    `json:"service_fee_details"`
 	ReceivedIncomes    []types.ReceivedIncomes   `json:"received_incomes"`
 	DeliveredOutcomes  []types.DeliveredOutcomes `json:"delivered_outcomes"`
 	ReceivedCompanyId  int64                     `json:"received_company_id"`
@@ -31,7 +33,9 @@ func (app *application) CreateTransactionHandler(w http.ResponseWriter, r *http.
 	}
 
 	transaction := &store.Transaction{
-		ServiceFee:         fmt.Sprint(payload.ServiceFee),
+		ServiceFeeAmount:   payload.ServiceFeeAmount,
+		ServiceFeeCurrency: payload.ServiceFeeCurrency,
+		ServiceFeeDetails:  payload.ServiceFeeDetails,
 		ReceivedIncomes:    payload.ReceivedIncomes,
 		DeliveredOutcomes:  payload.DeliveredOutcomes,
 		ReceivedCompanyId:  payload.ReceivedCompanyId,
@@ -55,6 +59,116 @@ func (app *application) CreateTransactionHandler(w http.ResponseWriter, r *http.
 	}
 }
 
+// CreateTransactionV2Handler — transaction yaratadi va KOMPANIYA balansiga ta'sir qiladi
+// (received_incomes). Amalni bajargan hodim user_id JWT'dan olinadi.
+func (app *application) CreateTransactionV2Handler(w http.ResponseWriter, r *http.Request) {
+	var payload TransactionPayload
+	if err := readJSON(w, r, &payload); err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	userID, _ := r.Context().Value(UserKey).(int64)
+	transaction := &store.Transaction{
+		ServiceFeeAmount:   payload.ServiceFeeAmount,
+		ServiceFeeCurrency: payload.ServiceFeeCurrency,
+		ServiceFeeDetails:  payload.ServiceFeeDetails,
+		ReceivedIncomes:    payload.ReceivedIncomes,
+		DeliveredOutcomes:  payload.DeliveredOutcomes,
+		ReceivedCompanyId:  payload.ReceivedCompanyId,
+		DeliveredCompanyId: payload.DeliveredCompanyId,
+		ReceivedUserId:     payload.ReceivedUserId,
+		DeliveredUserId:    payload.DeliveredUserId,
+		Phone:              payload.Phone,
+		Details:            payload.Details,
+		Type:               payload.Type,
+		Status:             1,
+	}
+
+	if err := app.service.CompanyOps.PerformTransactionV2(r.Context(), transaction, userID); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, ""); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// CompleteTransactionV2Handler — transaction yakunlaydi va KOMPANIYA balansiga ta'sir qiladi
+// (delivered_outcomes). Amalni bajargan hodim user_id JWT'dan olinadi.
+func (app *application) CompleteTransactionV2Handler(w http.ResponseWriter, r *http.Request) {
+	var payload types.TransactionComplete
+	if err := readJSON(w, r, &payload); err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	userID, _ := r.Context().Value(UserKey).(int64)
+	if err := app.service.CompanyOps.CompleteTransactionV2(r.Context(), payload, userID); err != nil {
+		if err == sql.ErrNoRows {
+			app.badRequestResponse(w, r, fmt.Errorf("BUYURTMA ALLAQACHON YAKUNLANGAN"))
+		} else {
+			app.internalServerError(w, r, err)
+		}
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, "SUCCESS"); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// UpdateTransactionV2Handler — transaction'ni yangilaydi (company balans). user_id JWT'dan.
+func (app *application) UpdateTransactionV2Handler(w http.ResponseWriter, r *http.Request) {
+	var payload TransactionPayload
+	if err := readJSON(w, r, &payload); err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	userID, _ := r.Context().Value(UserKey).(int64)
+	transaction := &store.Transaction{
+		ID:                 getIDFromContext(r),
+		ServiceFeeAmount:   payload.ServiceFeeAmount,
+		ServiceFeeCurrency: payload.ServiceFeeCurrency,
+		ServiceFeeDetails:  payload.ServiceFeeDetails,
+		ReceivedIncomes:    payload.ReceivedIncomes,
+		DeliveredOutcomes:  payload.DeliveredOutcomes,
+		ReceivedCompanyId:  payload.ReceivedCompanyId,
+		DeliveredCompanyId: payload.DeliveredCompanyId,
+		ReceivedUserId:     payload.ReceivedUserId,
+		DeliveredUserId:    payload.DeliveredUserId,
+		Phone:              payload.Phone,
+		Details:            payload.Details,
+		Type:               payload.Type,
+		Status:             1,
+	}
+
+	if err := app.service.CompanyOps.UpdateTransactionV2(r.Context(), transaction, userID); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, transaction); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// DeleteTransactionV2Handler — transaction'ni o'chiradi (company balans).
+func (app *application) DeleteTransactionV2Handler(w http.ResponseWriter, r *http.Request) {
+	id := getIDFromContext(r)
+
+	if err := app.service.CompanyOps.DeleteTransactionV2(r.Context(), id); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, "DELETED"); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
 func (app *application) UpdateTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	var payload TransactionPayload
 	if err := readJSON(w, r, &payload); err != nil {
@@ -64,7 +178,9 @@ func (app *application) UpdateTransactionHandler(w http.ResponseWriter, r *http.
 
 	transaction := &store.Transaction{
 		ID:                 getIDFromContext(r),
-		ServiceFee:         fmt.Sprint(payload.ServiceFee),
+		ServiceFeeAmount:   payload.ServiceFeeAmount,
+		ServiceFeeCurrency: payload.ServiceFeeCurrency,
+		ServiceFeeDetails:  payload.ServiceFeeDetails,
 		ReceivedIncomes:    payload.ReceivedIncomes,
 		DeliveredOutcomes:  payload.DeliveredOutcomes,
 		ReceivedCompanyId:  payload.ReceivedCompanyId,

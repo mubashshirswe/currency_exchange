@@ -77,6 +77,107 @@ func (app *application) CreateDebtorTransactionHandler(w http.ResponseWriter, r 
 	}
 }
 
+// CreateDebtorsV2Handler — debtor + debt yaratadi va KOMPANIYA balansiga ta'sir qiladi
+// (received_incomes). Amalni bajargan hodim user_id JWT'dan olinadi.
+func (app *application) CreateDebtorsV2Handler(w http.ResponseWriter, r *http.Request) {
+	var payload DebtorPayload
+	if err := readJSON(w, r, &payload); err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	userID, _ := r.Context().Value(UserKey).(int64)
+	debt := &store.Debts{
+		FullName:        payload.FullName,
+		ReceivedIncomes: payload.ReceivedIncomes,
+		DebtedAmount:    payload.DebtedAmount,
+		DebtedCurrency:  payload.DebtedCurrency,
+		UserID:          userID,
+		Details:         payload.Details,
+		Phone:           payload.Phone,
+		IsBalanceEffect: payload.IsBalanceEffect,
+		Type:            payload.Type,
+	}
+
+	if err := app.service.CompanyOps.CreateDebtV2(r.Context(), debt); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, debt); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// CreateDebtorTransactionV2Handler — mavjud debtorga qarz tranzaksiyasi; KOMPANIYA balansiga ta'sir.
+// Amalni bajargan hodim user_id JWT'dan olinadi.
+func (app *application) CreateDebtorTransactionV2Handler(w http.ResponseWriter, r *http.Request) {
+	var payload *store.Debts
+	if err := readJSON(w, r, &payload); err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	userID, _ := r.Context().Value(UserKey).(int64)
+	payload.UserID = userID
+
+	if err := app.service.CompanyOps.DebtTransactionV2(r.Context(), payload); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, payload); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// UpdateDebtsV2Handler — debt'ni yangilaydi (company balans). user_id JWT'dan.
+func (app *application) UpdateDebtsV2Handler(w http.ResponseWriter, r *http.Request) {
+	var payload *store.Debts
+	if err := readJSON(w, r, &payload); err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	userID, _ := r.Context().Value(UserKey).(int64)
+	debt := &store.Debts{
+		ID:              getIDFromContext(r),
+		FullName:        payload.FullName,
+		ReceivedIncomes: payload.ReceivedIncomes,
+		DebtedAmount:    payload.DebtedAmount,
+		DebtedCurrency:  payload.DebtedCurrency,
+		UserID:          userID,
+		Details:         payload.Details,
+		Phone:           payload.Phone,
+		IsBalanceEffect: payload.IsBalanceEffect,
+		Type:            payload.Type,
+		DebtorID:        payload.DebtorID,
+	}
+
+	if err := app.service.CompanyOps.UpdateDebtV2(r.Context(), debt); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, debt); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// DeleteDebtsV2Handler — debt'ni o'chiradi (company balans).
+func (app *application) DeleteDebtsV2Handler(w http.ResponseWriter, r *http.Request) {
+	id := getIDFromContext(r)
+
+	if err := app.service.CompanyOps.DeleteDebtV2(r.Context(), id); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, "DELETED"); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
 func (app *application) UpdateDebtsHandler(w http.ResponseWriter, r *http.Request) {
 	var payload *store.Debts
 	if err := readJSON(w, r, &payload); err != nil {

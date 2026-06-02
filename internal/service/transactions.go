@@ -177,6 +177,14 @@ func (s *TransactionService) CompleteTransaction(ctx context.Context, transactio
 	tran.Status = TRANSACTION_STATUS_COMPLETED
 	tran.DeliveredUserId = &transaction.DeliveredUserId
 
+	// Agar tranzaksiya yaratilganda xizmat puli kiritilmagan bo'lsa,
+	// yakunlash bosqichida kiritilgan summa + valyuta + izoh saqlanadi.
+	if transaction.ServiceFeeAmount > 0 {
+		tran.ServiceFeeAmount = transaction.ServiceFeeAmount
+		tran.ServiceFeeCurrency = transaction.ServiceFeeCurrency
+		tran.ServiceFeeDetails = transaction.ServiceFeeDetails
+	}
+
 	if err := transactionsStorage.Update(ctx, tran); err != nil {
 		tx.Rollback()
 		return fmt.Errorf("ERROR OCCURRED WHILE transactionsStorage.Update %v", err)
@@ -452,17 +460,20 @@ func (s *TransactionService) GetByCompanyId(ctx context.Context, companyId int64
 			}
 
 			res := map[string]interface{}{
-				"service_fee":        tran.ServiceFee,
-				"received_incomes":   tran.ReceivedIncomes,
-				"delivered_outcomes": tran.DeliveredOutcomes,
-				"received_company":   "",
-				"received_user":      "",
-				"delivered_user":     deliveryUser,
-				"phone":              tran.Phone,
-				"details":            tran.Details,
-				"created_at":         tran.CreatedAt,
-				"type":               tran.Type,
-				"status":             tran.Status,
+				"service_fee":          formatServiceFee(tran.ServiceFeeAmount, tran.ServiceFeeCurrency, tran.ServiceFeeDetails),
+				"service_fee_amount":   tran.ServiceFeeAmount,
+				"service_fee_currency": tran.ServiceFeeCurrency,
+				"service_fee_details":  tran.ServiceFeeDetails,
+				"received_incomes":     tran.ReceivedIncomes,
+				"delivered_outcomes":   tran.DeliveredOutcomes,
+				"received_company":     "",
+				"received_user":        "",
+				"delivered_user":       deliveryUser,
+				"phone":                tran.Phone,
+				"details":              tran.Details,
+				"created_at":           tran.CreatedAt,
+				"type":                 tran.Type,
+				"status":               tran.Status,
 			}
 			if receivedCompany != nil {
 				res["received_company"] = receivedCompany.Name
@@ -536,7 +547,10 @@ func (s *TransactionService) GetByField(ctx context.Context, search *string, fie
 			"delivered_company":    deliveredCompanyName,
 			"delivered_user":       deliveryUser,
 			"delivered_user_id":    tran.DeliveredUserId,
-			"service_fee":          tran.ServiceFee,
+			"service_fee":          formatServiceFee(tran.ServiceFeeAmount, tran.ServiceFeeCurrency, tran.ServiceFeeDetails),
+			"service_fee_amount":   tran.ServiceFeeAmount,
+			"service_fee_currency": tran.ServiceFeeCurrency,
+			"service_fee_details":  tran.ServiceFeeDetails,
 			"phone":                tran.Phone,
 			"details":              tran.Details,
 			"created_at":           tran.CreatedAt,
@@ -603,7 +617,10 @@ func (s *TransactionService) Archived(ctx context.Context, pagination types.Pagi
 			"delivered_company":    deliveredCompanyName,
 			"delivered_user":       DeliveredUser,
 			"delivered_user_id":    tran.DeliveredUserId,
-			"service_fee":          tran.ServiceFee,
+			"service_fee":          formatServiceFee(tran.ServiceFeeAmount, tran.ServiceFeeCurrency, tran.ServiceFeeDetails),
+			"service_fee_amount":   tran.ServiceFeeAmount,
+			"service_fee_currency": tran.ServiceFeeCurrency,
+			"service_fee_details":  tran.ServiceFeeDetails,
 			"phone":                tran.Phone,
 			"details":              tran.Details,
 			"created_at":           tran.CreatedAt,
@@ -623,6 +640,17 @@ func (s *TransactionService) GetInfos(ctx context.Context, date string) ([]store
 	}
 
 	return trans, nil
+}
+
+// formatServiceFee — eski mobil versiyalar bilan moslik uchun xizmat puli matn ko'rinishini qaytaradi.
+func formatServiceFee(amount int64, currency, details string) string {
+	if amount > 0 {
+		if currency != "" {
+			return fmt.Sprintf("%d %s", amount, currency)
+		}
+		return fmt.Sprintf("%d", amount)
+	}
+	return details
 }
 
 func GetOne(ids map[string]int64, id string) int64 {

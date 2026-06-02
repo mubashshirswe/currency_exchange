@@ -84,6 +84,15 @@ type Storage struct {
 		UserActivityByCompany(context.Context, int64) ([]UserActivityRow, error)
 	}
 
+	CompanyBalanceRecords interface {
+		Create(context.Context, *CompanyBalanceRecord) error
+		GetById(context.Context, int64) (*CompanyBalanceRecord, error)
+		Update(context.Context, *CompanyBalanceRecord) error
+		Delete(context.Context, int64) error
+		ListByLink(context.Context, string, int64) ([]CompanyBalanceRecord, error)
+		ListByCompany(context.Context, int64, string, types.Pagination) ([]CompanyBalanceRecordRow, error)
+	}
+
 	BalanceRecords interface {
 		Create(context.Context, *BalanceRecord) error
 		GetByField(context.Context, string, any, types.Pagination) ([]BalanceRecord, error)
@@ -129,17 +138,18 @@ func NewStorage(db *sql.DB) Storage {
 	dbwrapper := &DBWrapper{db: db}
 
 	return Storage{
-		DB:              db,
-		Debts:           &DebtsStorage{db: dbwrapper},
-		Exchanges:       &ExchangeStorage{db: dbwrapper},
-		Debtors:         &DebtorsStorage{db: dbwrapper},
-		Users:           &UserStorage{db: dbwrapper},
-		Transactions:    &TransactionStorage{db: dbwrapper},
-		Balances:        &BalanceStorage{db: dbwrapper},
-		CompanyBalances: &CompanyBalanceStorage{db: dbwrapper},
-		Companies:       &CompanyStorage{db: dbwrapper},
-		BalanceRecords:  &BalanceRecordStorage{db: dbwrapper},
-		UserSessions:    &UserSessionStorage{db: dbwrapper},
+		DB:                    db,
+		Debts:                 &DebtsStorage{db: dbwrapper},
+		Exchanges:             &ExchangeStorage{db: dbwrapper},
+		Debtors:               &DebtorsStorage{db: dbwrapper},
+		Users:                 &UserStorage{db: dbwrapper},
+		Transactions:          &TransactionStorage{db: dbwrapper},
+		Balances:              &BalanceStorage{db: dbwrapper},
+		CompanyBalances:       &CompanyBalanceStorage{db: dbwrapper},
+		CompanyBalanceRecords: &CompanyBalanceRecordStorage{db: dbwrapper},
+		Companies:             &CompanyStorage{db: dbwrapper},
+		BalanceRecords:        &BalanceRecordStorage{db: dbwrapper},
+		UserSessions:          &UserSessionStorage{db: dbwrapper},
 	}
 }
 

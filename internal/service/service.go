@@ -39,6 +39,27 @@ type Service struct {
 		UpdateRecord(context.Context, store.BalanceRecord) error
 	}
 
+	CompanyBalanceRecords interface {
+		PerformCompanyBalanceRecord(context.Context, types.CompanyBalanceRecordPayload) error
+		RollbackCompanyBalanceRecord(context.Context, int64) error
+		UpdateCompanyBalanceRecord(context.Context, store.CompanyBalanceRecord) error
+	}
+
+	// CompanyOps — v2: exchange/transaction/debt kompaniya balansiga ta'sir qiladi.
+	CompanyOps interface {
+		CreateExchangeV2(context.Context, *store.Exchange) error
+		UpdateExchangeV2(context.Context, *store.Exchange) error
+		DeleteExchangeV2(context.Context, int64) error
+		PerformTransactionV2(context.Context, *store.Transaction, int64) error
+		CompleteTransactionV2(context.Context, types.TransactionComplete, int64) error
+		UpdateTransactionV2(context.Context, *store.Transaction, int64) error
+		DeleteTransactionV2(context.Context, int64) error
+		CreateDebtV2(context.Context, *store.Debts) error
+		DebtTransactionV2(context.Context, *store.Debts) error
+		UpdateDebtV2(context.Context, *store.Debts) error
+		DeleteDebtV2(context.Context, int64) error
+	}
+
 	Transactions interface {
 		GetByField(context.Context, *string, string, any, types.Pagination) ([]map[string]interface{}, error)
 		PerformTransaction(context.Context, *store.Transaction) error
@@ -53,12 +74,14 @@ type Service struct {
 
 func NewService(store store.Storage, delivered notify.DeliveredUser) Service {
 	return Service{
-		Debtors:        &DebtorsService{store: store},
-		Balances:       &BalanceService{store: store},
-		Exchanges:      &ExchangeService{store: store},
-		BalanceRecords: &BalanceRecordService{store: store},
-		Transactions:   NewTransactionService(store, delivered),
-		Debts:          &DebtsService{store: store},
+		Debtors:               &DebtorsService{store: store},
+		Balances:              &BalanceService{store: store},
+		Exchanges:             &ExchangeService{store: store},
+		BalanceRecords:        &BalanceRecordService{store: store},
+		CompanyBalanceRecords: &CompanyBalanceRecordService{store: store},
+		CompanyOps:            NewCompanyOpsService(store, delivered),
+		Transactions:          NewTransactionService(store, delivered),
+		Debts:                 &DebtsService{store: store},
 	}
 }
 

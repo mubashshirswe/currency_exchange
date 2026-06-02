@@ -23,7 +23,9 @@ type Transaction struct {
 	DeliveredOutcomes  []types.DeliveredOutcomes `json:"delivered_outcomes"`
 	DeliveredCompanyId int64                     `json:"delivered_company_id"`
 	DeliveredUserId    *int64                    `json:"delivered_user_id"`
-	ServiceFee         string                    `json:"service_fee"`
+	ServiceFeeAmount   int64                     `json:"service_fee_amount"`
+	ServiceFeeCurrency string                    `json:"service_fee_currency"`
+	ServiceFeeDetails  string                    `json:"service_fee_details"`
 	Phone              string                    `json:"phone"`
 	Details            string                    `json:"details"`
 	Status             int64                     `json:"status"`
@@ -75,14 +77,16 @@ func (s *TransactionStorage) Create(ctx context.Context, tr *Transaction) error 
 
 	query := `
 			INSERT INTO transactions(
-				service_fee, received_incomes, delivered_outcomes,
+				service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
 	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at) 
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, created_at`
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id, created_at`
 
 	err = s.db.QueryRowContext(
 		ctx,
 		query,
-		tr.ServiceFee,
+		tr.ServiceFeeAmount,
+		tr.ServiceFeeCurrency,
+		tr.ServiceFeeDetails,
 		receivedIncomesJSON,
 		deliveredOutcomesJSON,
 		tr.ReceivedCompanyId,
@@ -118,24 +122,28 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 
 	query := `	
 		UPDATE transactions SET
-			service_fee = $1,
-			received_incomes = $2,
-			delivered_outcomes = $3,
-			received_company_id = $4,
-			delivered_company_id = $5,
-			received_user_id = $6,
-			delivered_user_id = $7,
-			phone = $8,
-			details = $9,
-			status = $10,
-			type = $11
-		WHERE id = $12 AND status = $13
+			service_fee_amount = $1,
+			service_fee_currency = $2,
+			service_fee_details = $3,
+			received_incomes = $4,
+			delivered_outcomes = $5,
+			received_company_id = $6,
+			delivered_company_id = $7,
+			received_user_id = $8,
+			delivered_user_id = $9,
+			phone = $10,
+			details = $11,
+			status = $12,
+			type = $13
+		WHERE id = $14 AND status = $15
 	`
 
 	result, err := s.db.ExecContext(
 		ctx,
 		query,
-		tr.ServiceFee,
+		tr.ServiceFeeAmount,
+		tr.ServiceFeeCurrency,
+		tr.ServiceFeeDetails,
 		receivedIncomesJSON,
 		deliveredOutcomesJSON,
 		tr.ReceivedCompanyId,
@@ -168,7 +176,7 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 
 func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transaction, error) {
 	query := `
-				SELECT id, number, service_fee, received_incomes, delivered_outcomes,
+				SELECT id, number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
 	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at
 				FROM transactions WHERE id = $1 AND status = $2 ORDER BY created_at DESC
 			`
@@ -176,6 +184,7 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 	tr := &Transaction{}
 	var receivedIncomesJSON []byte
 	var deliveredOutcomesJSON []byte
+	var serviceFeeDetails sql.NullString
 
 	err := s.db.QueryRowContext(
 		ctx,
@@ -185,7 +194,9 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 	).Scan(
 		&tr.ID,
 		&tr.Number,
-		&tr.ServiceFee,
+		&tr.ServiceFeeAmount,
+		&tr.ServiceFeeCurrency,
+		&serviceFeeDetails,
 		&receivedIncomesJSON,
 		&deliveredOutcomesJSON,
 		&tr.ReceivedCompanyId,
@@ -201,6 +212,8 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 	if err != nil {
 		return nil, err
 	}
+
+	tr.ServiceFeeDetails = serviceFeeDetails.String
 
 	if err := json.Unmarshal(receivedIncomesJSON, &tr.ReceivedIncomes); err != nil {
 		return nil, err
@@ -218,7 +231,7 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 
 func (s *TransactionStorage) Archived(ctx context.Context, pagination types.Pagination) ([]Transaction, error) {
 	query := `
-				SELECT id, number, service_fee, received_incomes, delivered_outcomes,
+				SELECT id, number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
 	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at
 				FROM transactions WHERE status = $1   ORDER BY created_at DESC ` + fmt.Sprintf("OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
 
@@ -261,7 +274,7 @@ func (s *TransactionStorage) GetByField(
 	argIndex := 3 // ✅ TO‘G‘RI
 
 	query := `
-		SELECT id, number, service_fee, received_incomes, delivered_outcomes,
+		SELECT id, number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
 		received_company_id, delivered_company_id, received_user_id, delivered_user_id,
 		phone, details, status, type, created_at
 		FROM transactions
@@ -274,7 +287,7 @@ func (s *TransactionStorage) GetByField(
 				details ILIKE $%d 
 				OR phone ILIKE $%d
 				OR CAST(number AS TEXT) ILIKE $%d
-				OR CAST(service_fee AS TEXT) ILIKE $%d
+				OR service_fee_details ILIKE $%d
 			)
 		`, argIndex, argIndex+1, argIndex+2, argIndex+3)
 
@@ -305,7 +318,7 @@ func (s *TransactionStorage) GetByField(
 
 func (s *TransactionStorage) GetInfos(ctx context.Context, companyId int64) ([]Transaction, error) {
 	query := `
-				SELECT id, number, service_fee, received_incomes, delivered_outcomes,
+				SELECT id, number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
 	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at
 				FROM transactions WHERE delivered_company_id = $1 AND status = $2
 			`
@@ -321,7 +334,7 @@ func (s *TransactionStorage) GetInfos(ctx context.Context, companyId int64) ([]T
 
 func (s *TransactionStorage) GetByFieldAndDate(ctx context.Context, fieldName, from, to string, fieldValue any, pagination types.Pagination) ([]Transaction, error) {
 	query := `
-				SELECT id, number, service_fee, received_incomes, delivered_outcomes,
+				SELECT id, number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
 	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at
 				FROM transactions WHERE ` + fmt.Sprintf("%v", fieldName) + ` = $1 AND created_at BETWEEN $2 AND $3 AND status != $4  ` + fmt.Sprintf("ORDER BY created_at DESC OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
 
@@ -373,10 +386,13 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 
 	for rows.Next() {
 		tr := &Transaction{}
+		var serviceFeeDetails sql.NullString
 		err := rows.Scan(
 			&tr.ID,
 			&tr.Number,
-			&tr.ServiceFee,
+			&tr.ServiceFeeAmount,
+			&tr.ServiceFeeCurrency,
+			&serviceFeeDetails,
 			&receivedIncomesJSON,
 			&deliveredOutcomesJSON,
 			&tr.ReceivedCompanyId,
@@ -393,6 +409,8 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 		if err != nil {
 			return nil, err
 		}
+
+		tr.ServiceFeeDetails = serviceFeeDetails.String
 
 		if err := json.Unmarshal(receivedIncomesJSON, &tr.ReceivedIncomes); err != nil {
 			return nil, err

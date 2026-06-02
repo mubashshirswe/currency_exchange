@@ -44,6 +44,78 @@ func (app *application) CreateExchangeHandler(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// CreateExchangeV2Handler — exchange yaratadi va KOMPANIYA balansiga ta'sir qiladi.
+// Amalni bajargan hodim user_id JWT'dan olinadi. User balanslarga tegmaydi.
+func (app *application) CreateExchangeV2Handler(w http.ResponseWriter, r *http.Request) {
+	var payload ExchangePayload
+	if err := readJSON(w, r, &payload); err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	userID, _ := r.Context().Value(UserKey).(int64)
+	exchange := &store.Exchange{
+		ReceivedMoney:    payload.ReceivedMoney,
+		ReceivedCurrency: payload.ReceivedCurrency,
+		SelledMoney:      payload.SelledMoney,
+		SelledCurrency:   payload.SelledCurrency,
+		UserId:           userID,
+		Details:          payload.Details,
+	}
+
+	if err := app.service.CompanyOps.CreateExchangeV2(r.Context(), exchange); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, payload); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// UpdateExchangeV2Handler — exchange'ni yangilaydi (company balans). user_id JWT'dan.
+func (app *application) UpdateExchangeV2Handler(w http.ResponseWriter, r *http.Request) {
+	var payload ExchangePayload
+	if err := readJSON(w, r, &payload); err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	userID, _ := r.Context().Value(UserKey).(int64)
+	exchange := &store.Exchange{
+		ID:               getIDFromContext(r),
+		ReceivedMoney:    payload.ReceivedMoney,
+		ReceivedCurrency: payload.ReceivedCurrency,
+		SelledMoney:      payload.SelledMoney,
+		SelledCurrency:   payload.SelledCurrency,
+		UserId:           userID,
+		Details:          payload.Details,
+	}
+
+	if err := app.service.CompanyOps.UpdateExchangeV2(r.Context(), exchange); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, payload); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// DeleteExchangeV2Handler — exchange'ni o'chiradi (company balans).
+func (app *application) DeleteExchangeV2Handler(w http.ResponseWriter, r *http.Request) {
+	id := getIDFromContext(r)
+
+	if err := app.service.CompanyOps.DeleteExchangeV2(r.Context(), id); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, "DELETED"); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
 func (app *application) GetExchangesHandler(w http.ResponseWriter, r *http.Request) {
 	var payload FieldRequestPayload
 	app.LoadPaginationInfo(r, r.Context())

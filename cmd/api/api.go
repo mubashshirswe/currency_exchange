@@ -73,6 +73,9 @@ func (app *application) mount() *chi.Mux {
 			// Kompaniya balansi (joriy foydalanuvchi kompaniyasi bo'yicha)
 			r.Get("/company-balances", app.GetMyCompanyBalancesHandler)
 			r.Get("/company-balance-records", app.GetMyCompanyBalanceRecordsHandler)
+			r.Post("/company-balance-records", app.CreateMyCompanyBalanceRecordHandler)
+			r.Put("/company-balance-records/{id}", app.UpdateMyCompanyBalanceRecordHandler)
+			r.Delete("/company-balance-records/{id}", app.DeleteMyCompanyBalanceRecordHandler)
 
 			r.Route("/sessions", func(r chi.Router) {
 				r.Post("/", app.UpsertUserSessionHandler)
@@ -97,12 +100,15 @@ func (app *application) mount() *chi.Mux {
 
 			r.Route("/exchanges", func(r chi.Router) {
 				r.With(app.DedupCreateMiddleware).Post("/", app.CreateExchangeHandler)
+				r.With(app.DedupCreateMiddleware).Post("/v2", app.CreateExchangeV2Handler)
 				r.Post("/filter", app.GetExchangesHandler)
 				r.Post("/archive", app.ArchiveExchangesHandler)
 				r.Get("/archived", app.ArchivedExchangesHandler)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Put("/", app.UpdateExchangeHandler)
 					r.Delete("/", app.DeleteExchangeHandler)
+					r.Put("/v2", app.UpdateExchangeV2Handler)
+					r.Delete("/v2", app.DeleteExchangeV2Handler)
 				})
 			})
 
@@ -120,6 +126,8 @@ func (app *application) mount() *chi.Mux {
 			r.Route("/debtors", func(r chi.Router) {
 				r.With(app.DedupCreateMiddleware).Post("/create", app.CreateDebtorsHandler)
 				r.With(app.DedupCreateMiddleware).Post("/transaction", app.CreateDebtorTransactionHandler)
+				r.With(app.DedupCreateMiddleware).Post("/create/v2", app.CreateDebtorsV2Handler)
+				r.With(app.DedupCreateMiddleware).Post("/transaction/v2", app.CreateDebtorTransactionV2Handler)
 				r.Get("/company/{id}", app.GetDebtorsByCompanyIdHandler)
 				r.Get("/info/{id}", app.GetDebtorsTotalBalanceInfo)
 				r.Delete("/{id}", app.DeleteDebtorsHandler)
@@ -128,12 +136,16 @@ func (app *application) mount() *chi.Mux {
 					r.Get("/", app.GetDebtsByDebtorIdHandler)
 					r.Put("/", app.UpdateDebtsHandler)
 					r.Delete("/", app.DeleteDebtsHandler)
+					r.Put("/v2", app.UpdateDebtsV2Handler)
+					r.Delete("/v2", app.DeleteDebtsV2Handler)
 				})
 			})
 
 			r.Route("/transactions", func(r chi.Router) {
 				r.With(app.DedupCreateMiddleware).Post("/create", app.CreateTransactionHandler)
+				r.With(app.DedupCreateMiddleware).Post("/create/v2", app.CreateTransactionV2Handler)
 				r.Post("/complete", app.CompleteTransactionHandler)
+				r.Post("/complete/v2", app.CompleteTransactionV2Handler)
 				r.Get("/show/process/{id}", app.GetTransactionsCompanyIdHandler)
 				r.Post("/archive", app.ArchiveTransactionsHandler)
 				r.Get("/archived", app.ArchivedTransactionsHandler)
@@ -143,6 +155,8 @@ func (app *application) mount() *chi.Mux {
 				r.Route("/{id}", func(r chi.Router) {
 					r.Put("/", app.UpdateTransactionHandler)
 					r.Delete("/", app.DeleteTransactionHandler)
+					r.Put("/v2", app.UpdateTransactionV2Handler)
+					r.Delete("/v2", app.DeleteTransactionV2Handler)
 				})
 			})
 
