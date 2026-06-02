@@ -634,9 +634,23 @@ func (s *TransactionService) Archived(ctx context.Context, pagination types.Pagi
 }
 
 func (s *TransactionService) GetInfos(ctx context.Context, date string) ([]store.CompanyAmount, error) {
-	trans, err := s.store.Transactions.GetCompanyFinalAmounts(ctx, []int64{1, 2}, date)
+	companies, err := s.store.Companies.GetAll(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("ERROR OCCURRED WHILE Transactions.GetByField %v", err)
+		return nil, fmt.Errorf("failed to load companies: %w", err)
+	}
+
+	companyIDs := make([]int64, 0, len(companies))
+	for _, c := range companies {
+		companyIDs = append(companyIDs, c.ID)
+	}
+
+	if len(companyIDs) == 0 {
+		return []store.CompanyAmount{}, nil
+	}
+
+	trans, err := s.store.Transactions.GetCompanyFinalAmounts(ctx, companyIDs, date)
+	if err != nil {
+		return nil, fmt.Errorf("ERROR OCCURRED WHILE Transactions.GetCompanyFinalAmounts %v", err)
 	}
 
 	return trans, nil

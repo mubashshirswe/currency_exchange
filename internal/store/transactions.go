@@ -470,10 +470,10 @@ select
     c.name as company_name,
     a.currency,
     
-    -- Olingan summalar (faqat date filter)
+    -- Olingan summalar (faqat date filter, Toshkent vaqti bo'yicha)
     coalesce(sum(
         case 
-            when a.created_at::date = $2 then
+            when (a.created_at AT TIME ZONE 'Asia/Tashkent')::date = $2::date then
                 case 
                     when a.type = 1 then a.delivered_amount
                     when a.type = 2 then a.received_amount
@@ -483,10 +483,10 @@ select
         end
     ),0) as olingan_amount,
 
-    -- Berilgan summalar (faqat date filter)
+    -- Berilgan summalar (faqat date filter, Toshkent vaqti bo'yicha)
     coalesce(sum(
         case 
-            when a.created_at::date = $2 then
+            when (a.created_at AT TIME ZONE 'Asia/Tashkent')::date = $2::date then
                 case 
                     when a.type = 1 then a.received_amount
                     when a.type = 2 then a.delivered_amount
