@@ -74,7 +74,7 @@ func (app *application) CreateExchangeV2Handler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if err := app.writeResponse(w, http.StatusOK, payload); err != nil {
+	if err := app.writeResponse(w, http.StatusOK, exchange); err != nil {
 		app.internalServerError(w, r, err)
 	}
 }
@@ -105,7 +105,7 @@ func (app *application) UpdateExchangeV2Handler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if err := app.writeResponse(w, http.StatusOK, payload); err != nil {
+	if err := app.writeResponse(w, http.StatusOK, exchange); err != nil {
 		app.internalServerError(w, r, err)
 	}
 }

@@ -123,8 +123,8 @@ func reverseAndDeleteByLink(
 }
 
 func isSumToUsdExchange(exchange *store.Exchange) bool {
-	return strings.EqualFold(exchange.ReceivedCurrency, "SUM") &&
-		strings.EqualFold(exchange.SelledCurrency, "USD")
+	return strings.EqualFold(exchange.ReceivedCurrency, "USD") &&
+		strings.EqualFold(exchange.SelledCurrency, "SUM")
 }
 
 func exchangeSoftProfit(exchange *store.Exchange) (int64, string, bool) {
