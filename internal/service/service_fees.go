@@ -18,12 +18,8 @@ func NewServiceFeeService(s store.Storage) *ServiceFeeService {
 	return &ServiceFeeService{store: s}
 }
 
-func normalizeFeeCurrency(c string) string {
-	c = strings.TrimSpace(strings.ToUpper(c))
-	if c == "" {
-		return "SUM"
-	}
-	return c
+func normalizeFeeCurrency(string) string {
+	return "SUM"
 }
 
 type serviceFeeWriter interface {
@@ -154,9 +150,6 @@ func (s *ServiceFeeService) Settle(
 	amount int64,
 	currency, details string,
 ) (*store.ServiceFeeSettlement, error) {
-	if amount <= 0 {
-		return nil, fmt.Errorf("MIQDOR MUSBAT BO'LISHI KERAK")
-	}
 	currency = normalizeFeeCurrency(currency)
 
 	tx, err := s.store.BeginTx(ctx)
@@ -177,6 +170,13 @@ func (s *ServiceFeeService) Settle(
 	var available int64
 	for _, f := range pending {
 		available += f.RemainingAmount
+	}
+	if available <= 0 {
+		return nil, fmt.Errorf("Taqsimlanmagan xizmat puli yo'q")
+	}
+	// amount <= 0 bo'lsa — hammasini avtomatik 0 qilish.
+	if amount <= 0 {
+		amount = available
 	}
 	if available < amount {
 		return nil, fmt.Errorf("Taqsimlanmagan xizmat puli yetarli emas")

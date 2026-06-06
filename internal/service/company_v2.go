@@ -371,6 +371,10 @@ func (s *CompanyOpsService) PerformTransactionV2(ctx context.Context, transactio
 	cbStorage := store.NewCompanyBalanceStorage(tx)
 	cbrStorage := store.NewCompanyBalanceRecordStorage(tx)
 
+	if transaction.ServiceFeeAmount > 0 {
+		transaction.ServiceFeeCurrency = "SUM"
+	}
+
 	if err := transactionsStorage.Create(ctx, transaction); err != nil {
 		return fmt.Errorf("ERROR OCCURRED WHILE Transactions.Create %v", err)
 	}
@@ -448,7 +452,7 @@ func (s *CompanyOpsService) CompleteTransactionV2(ctx context.Context, complete 
 
 	if complete.ServiceFeeAmount > 0 {
 		tran.ServiceFeeAmount = complete.ServiceFeeAmount
-		tran.ServiceFeeCurrency = complete.ServiceFeeCurrency
+		tran.ServiceFeeCurrency = "SUM"
 		tran.ServiceFeeDetails = complete.ServiceFeeDetails
 	}
 
@@ -501,6 +505,10 @@ func (s *CompanyOpsService) UpdateTransactionV2(ctx context.Context, transaction
 
 	if err := reverseAndDeleteByLink(ctx, cbStorage, cbrStorage, "transaction_id", transaction.ID); err != nil {
 		return err
+	}
+
+	if transaction.ServiceFeeAmount > 0 {
+		transaction.ServiceFeeCurrency = "SUM"
 	}
 
 	if err := transactionsStorage.Update(ctx, transaction); err != nil {

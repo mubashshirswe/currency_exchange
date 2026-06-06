@@ -181,7 +181,7 @@ func (s *TransactionService) CompleteTransaction(ctx context.Context, transactio
 	// yakunlash bosqichida kiritilgan summa + valyuta + izoh saqlanadi.
 	if transaction.ServiceFeeAmount > 0 {
 		tran.ServiceFeeAmount = transaction.ServiceFeeAmount
-		tran.ServiceFeeCurrency = transaction.ServiceFeeCurrency
+		tran.ServiceFeeCurrency = "SUM"
 		tran.ServiceFeeDetails = transaction.ServiceFeeDetails
 	}
 
