@@ -147,6 +147,10 @@ func (app *application) mount() *chi.Mux {
 				})
 			})
 
+			r.Get("/transaction-service-fees", app.GetTransactionServiceFeesHandler)
+			r.Get("/service-fee-settlements", app.GetServiceFeeSettlementsHandler)
+			r.Post("/service-fee-settlements", app.CreateServiceFeeSettlementHandler)
+
 			r.Route("/transactions", func(r chi.Router) {
 				r.With(app.DedupCreateMiddleware).Post("/create", app.CreateTransactionHandler)
 				r.With(app.DedupCreateMiddleware).Post("/create/v2", app.CreateTransactionV2Handler)

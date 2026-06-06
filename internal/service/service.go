@@ -75,6 +75,12 @@ type Service struct {
 		Update(context.Context, *store.Transaction) error
 		Delete(context.Context, *int64) error
 	}
+
+	ServiceFees interface {
+		ListFees(context.Context, int64, string, int64, types.Pagination) ([]store.TransactionServiceFee, error)
+		ListSettlements(context.Context, int64, string, types.Pagination) ([]store.ServiceFeeSettlement, error)
+		Settle(context.Context, int64, int64, int64, string, string) (*store.ServiceFeeSettlement, error)
+	}
 }
 
 func NewService(store store.Storage, delivered notify.DeliveredUser) Service {
@@ -87,6 +93,7 @@ func NewService(store store.Storage, delivered notify.DeliveredUser) Service {
 		SoftBalanceRecords:    &SoftBalanceRecordService{store: store},
 		CompanyOps:            NewCompanyOpsService(store, delivered),
 		Transactions:          NewTransactionService(store, delivered),
+		ServiceFees:           NewServiceFeeService(store),
 		Debts:                 &DebtsService{store: store},
 	}
 }

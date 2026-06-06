@@ -131,6 +131,25 @@ type Storage struct {
 		Archived(context.Context, types.Pagination) ([]Transaction, error)
 	}
 
+	TransactionServiceFees interface {
+		Create(context.Context, *TransactionServiceFee) error
+		GetByTransactionID(context.Context, int64) (*TransactionServiceFee, error)
+		Update(context.Context, *TransactionServiceFee) error
+		DeleteByTransactionID(context.Context, int64) error
+		ListPendingFIFO(context.Context, int64, string) ([]TransactionServiceFee, error)
+		ListByCompany(context.Context, int64, string, int64, types.Pagination) ([]TransactionServiceFee, error)
+		GetRemainingByCompanies(context.Context, []int64) ([]ServiceFeeRemainingRow, error)
+	}
+
+	ServiceFeeSettlements interface {
+		Create(context.Context, *ServiceFeeSettlement) error
+		ListByCompany(context.Context, int64, string, types.Pagination) ([]ServiceFeeSettlement, error)
+	}
+
+	ServiceFeeSettlementItems interface {
+		Create(context.Context, int64, int64, int64) error
+	}
+
 	Companies interface {
 		Create(context.Context, *Company) error
 		GetAll(context.Context) ([]Company, error)
@@ -159,8 +178,11 @@ func NewStorage(db *sql.DB) Storage {
 		Exchanges:             &ExchangeStorage{db: dbwrapper},
 		Debtors:               &DebtorsStorage{db: dbwrapper},
 		Users:                 &UserStorage{db: dbwrapper},
-		Transactions:          &TransactionStorage{db: dbwrapper},
-		Balances:              &BalanceStorage{db: dbwrapper},
+		Transactions:              &TransactionStorage{db: dbwrapper},
+		TransactionServiceFees:    &TransactionServiceFeeStorage{db: dbwrapper},
+		ServiceFeeSettlements:     &ServiceFeeSettlementStorage{db: dbwrapper},
+		ServiceFeeSettlementItems: &ServiceFeeSettlementItemStorage{db: dbwrapper},
+		Balances:                  &BalanceStorage{db: dbwrapper},
 		CompanyBalances:       &CompanyBalanceStorage{db: dbwrapper},
 		CompanyBalanceRecords: &CompanyBalanceRecordStorage{db: dbwrapper},
 		SoftBalances:          &SoftBalanceStorage{db: dbwrapper},

@@ -375,6 +375,14 @@ func (s *CompanyOpsService) PerformTransactionV2(ctx context.Context, transactio
 		return fmt.Errorf("ERROR OCCURRED WHILE Transactions.Create %v", err)
 	}
 
+	feeCompanyID := transaction.ReceivedCompanyId
+	if feeCompanyID == 0 {
+		feeCompanyID = companyID
+	}
+	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(ctx, tx, transaction, feeCompanyID); err != nil {
+		return fmt.Errorf("service fee sync on create: %w", err)
+	}
+
 	link := opLink{TransactionId: &transaction.ID}
 	for _, tr := range transaction.ReceivedIncomes {
 		if err := applyCompanyOp(ctx, cbStorage, cbrStorage, companyID, actingUserID,
@@ -438,10 +446,24 @@ func (s *CompanyOpsService) CompleteTransactionV2(ctx context.Context, complete 
 		}
 	}
 
+	if complete.ServiceFeeAmount > 0 {
+		tran.ServiceFeeAmount = complete.ServiceFeeAmount
+		tran.ServiceFeeCurrency = complete.ServiceFeeCurrency
+		tran.ServiceFeeDetails = complete.ServiceFeeDetails
+	}
+
 	tran.Status = TRANSACTION_STATUS_COMPLETED
 	tran.DeliveredUserId = &complete.DeliveredUserId
 	if err := transactionsStorage.Update(ctx, tran); err != nil {
 		return fmt.Errorf("ERROR OCCURRED WHILE transactionsStorage.Update %v", err)
+	}
+
+	feeCompanyID := tran.DeliveredCompanyId
+	if feeCompanyID == 0 {
+		feeCompanyID = companyID
+	}
+	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(ctx, tx, tran, feeCompanyID); err != nil {
+		return fmt.Errorf("service fee sync on complete: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -509,6 +531,17 @@ func (s *CompanyOpsService) UpdateTransactionV2(ctx context.Context, transaction
 				return err
 			}
 		}
+	}
+
+	feeCompanyID := transaction.ReceivedCompanyId
+	if transaction.DeliveredUserId != nil {
+		feeCompanyID = transaction.DeliveredCompanyId
+	}
+	if feeCompanyID == 0 {
+		feeCompanyID = companyID
+	}
+	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(ctx, tx, transaction, feeCompanyID); err != nil {
+		return fmt.Errorf("service fee sync on update: %w", err)
 	}
 
 	return tx.Commit()
