@@ -173,23 +173,23 @@ func NewStorage(db *sql.DB) Storage {
 	dbwrapper := &DBWrapper{db: db}
 
 	return Storage{
-		DB:                    db,
-		Debts:                 &DebtsStorage{db: dbwrapper},
-		Exchanges:             &ExchangeStorage{db: dbwrapper},
-		Debtors:               &DebtorsStorage{db: dbwrapper},
-		Users:                 &UserStorage{db: dbwrapper},
+		DB:                        db,
+		Debts:                     &DebtsStorage{db: dbwrapper},
+		Exchanges:                 &ExchangeStorage{db: dbwrapper},
+		Debtors:                   &DebtorsStorage{db: dbwrapper},
+		Users:                     &UserStorage{db: dbwrapper},
 		Transactions:              &TransactionStorage{db: dbwrapper},
 		TransactionServiceFees:    &TransactionServiceFeeStorage{db: dbwrapper},
 		ServiceFeeSettlements:     &ServiceFeeSettlementStorage{db: dbwrapper},
 		ServiceFeeSettlementItems: &ServiceFeeSettlementItemStorage{db: dbwrapper},
 		Balances:                  &BalanceStorage{db: dbwrapper},
-		CompanyBalances:       &CompanyBalanceStorage{db: dbwrapper},
-		CompanyBalanceRecords: &CompanyBalanceRecordStorage{db: dbwrapper},
-		SoftBalances:          &SoftBalanceStorage{db: dbwrapper},
-		SoftBalanceRecords:    &SoftBalanceRecordStorage{db: dbwrapper},
-		Companies:             &CompanyStorage{db: dbwrapper},
-		BalanceRecords:        &BalanceRecordStorage{db: dbwrapper},
-		UserSessions:          &UserSessionStorage{db: dbwrapper},
+		CompanyBalances:           &CompanyBalanceStorage{db: dbwrapper},
+		CompanyBalanceRecords:     &CompanyBalanceRecordStorage{db: dbwrapper},
+		SoftBalances:              &SoftBalanceStorage{db: dbwrapper},
+		SoftBalanceRecords:        &SoftBalanceRecordStorage{db: dbwrapper},
+		Companies:                 &CompanyStorage{db: dbwrapper},
+		BalanceRecords:            &BalanceRecordStorage{db: dbwrapper},
+		UserSessions:              &UserSessionStorage{db: dbwrapper},
 	}
 }
 

@@ -430,13 +430,13 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 }
 
 type CompanyAmount struct {
-	CompanyName           string
-	Currency              string
-	OlinganAmount         float64
-	BerilganAmount        float64
-	Remain                float64
-	ServiceFeeAmount      float64
-	ServiceFeeRemaining   float64
+	CompanyName         string
+	Currency            string
+	OlinganAmount       float64
+	BerilganAmount      float64
+	Remain              float64
+	ServiceFeeAmount    float64
+	ServiceFeeRemaining float64
 }
 
 func (s *TransactionStorage) GetCompanyFinalAmounts(ctx context.Context, companyIDs []int64, date string) ([]CompanyAmount, error) {

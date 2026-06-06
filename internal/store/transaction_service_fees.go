@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	ServiceFeeStatusPending  = 1 // taqsimlanmagan
-	ServiceFeeStatusSettled  = 2 // to'liq yakunlangan
+	ServiceFeeStatusPending = 1 // taqsimlanmagan
+	ServiceFeeStatusSettled = 2 // to'liq yakunlangan
 )
 
 type TransactionServiceFee struct {
