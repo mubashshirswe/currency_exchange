@@ -162,6 +162,21 @@ func (s *ServiceFeeService) Settle(
 	settlementStorage := store.NewServiceFeeSettlementStorage(tx)
 	itemStorage := store.NewServiceFeeSettlementItemStorage(tx)
 
+	// amount <= 0 — barcha status=1 yozuvlarni to'liq yakunlash (barcha kompaniyalar).
+	if amount <= 0 {
+		st, err := s.settleAllPending(
+			ctx, feeStorage, settlementStorage, itemStorage,
+			companyID, userID, currency, details,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return st, nil
+	}
+
 	pending, err := feeStorage.ListPendingFIFO(ctx, companyID, currency)
 	if err != nil {
 		return nil, err
@@ -173,10 +188,6 @@ func (s *ServiceFeeService) Settle(
 	}
 	if available <= 0 {
 		return nil, fmt.Errorf("Taqsimlanmagan xizmat puli yo'q")
-	}
-	// amount <= 0 bo'lsa — hammasini avtomatik 0 qilish.
-	if amount <= 0 {
-		amount = available
 	}
 	if available < amount {
 		return nil, fmt.Errorf("Taqsimlanmagan xizmat puli yetarli emas")
@@ -220,5 +231,63 @@ func (s *ServiceFeeService) Settle(
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	return st, nil
+}
+
+func (s *ServiceFeeService) settleAllPending(
+	ctx context.Context,
+	feeStorage *store.TransactionServiceFeeStorage,
+	settlementStorage *store.ServiceFeeSettlementStorage,
+	itemStorage *store.ServiceFeeSettlementItemStorage,
+	companyID, userID int64,
+	currency, details string,
+) (*store.ServiceFeeSettlement, error) {
+	pending, err := feeStorage.ListAllPending(ctx, currency)
+	if err != nil {
+		return nil, err
+	}
+	if len(pending) == 0 {
+		return nil, fmt.Errorf("Taqsimlanmagan xizmat puli yo'q")
+	}
+
+	var total int64
+	for _, f := range pending {
+		if f.RemainingAmount > 0 {
+			total += f.RemainingAmount
+		} else {
+			total += f.Amount
+		}
+	}
+	if total <= 0 {
+		return nil, fmt.Errorf("Taqsimlanmagan xizmat puli yo'q")
+	}
+
+	st := &store.ServiceFeeSettlement{
+		CompanyID: companyID,
+		UserID:    userID,
+		Amount:    total,
+		Currency:  currency,
+		Details:   details,
+	}
+	if err := settlementStorage.Create(ctx, st); err != nil {
+		return nil, err
+	}
+
+	for i := range pending {
+		f := &pending[i]
+		use := f.RemainingAmount
+		if use <= 0 {
+			use = f.Amount
+		}
+		f.RemainingAmount = 0
+		f.Status = store.ServiceFeeStatusSettled
+		if err := feeStorage.Update(ctx, f); err != nil {
+			return nil, err
+		}
+		if err := itemStorage.Create(ctx, st.ID, f.ID, use); err != nil {
+			return nil, err
+		}
+	}
+
 	return st, nil
 }

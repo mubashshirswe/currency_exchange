@@ -121,6 +121,28 @@ func (s *TransactionServiceFeeStorage) ListPendingFIFO(
 	return scanServiceFees(rows)
 }
 
+// ListAllPending — barcha kompaniyalardagi status=1 (taqsimlanmagan) yozuvlar.
+func (s *TransactionServiceFeeStorage) ListAllPending(
+	ctx context.Context, currency string,
+) ([]TransactionServiceFee, error) {
+	query := `SELECT id, transaction_id, company_id, amount, remaining_amount,
+		currency, COALESCE(details, ''), status, created_at
+		FROM transaction_service_fees
+		WHERE status = $1`
+	args := []any{ServiceFeeStatusPending}
+	if currency != "" {
+		query += ` AND currency = $2`
+		args = append(args, currency)
+	}
+	query += ` ORDER BY created_at ASC, id ASC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanServiceFees(rows)
+}
+
 func (s *TransactionServiceFeeStorage) ListByCompany(
 	ctx context.Context,
 	companyID int64,
@@ -184,7 +206,7 @@ func (s *TransactionServiceFeeStorage) GetRemainingByCompanies(
 ) ([]ServiceFeeRemainingRow, error) {
 	query := `SELECT company_id, currency, COALESCE(SUM(remaining_amount), 0)::bigint
 		FROM transaction_service_fees
-		WHERE company_id = ANY($1) AND status = $2 AND remaining_amount > 0
+		WHERE company_id = ANY($1) AND status = $2
 		GROUP BY company_id, currency`
 	rows, err := s.db.QueryContext(ctx, query, pq.Array(companyIDs), ServiceFeeStatusPending)
 	if err != nil {

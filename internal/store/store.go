@@ -137,6 +137,7 @@ type Storage struct {
 		Update(context.Context, *TransactionServiceFee) error
 		DeleteByTransactionID(context.Context, int64) error
 		ListPendingFIFO(context.Context, int64, string) ([]TransactionServiceFee, error)
+		ListAllPending(context.Context, string) ([]TransactionServiceFee, error)
 		ListByCompany(context.Context, int64, string, int64, types.Pagination) ([]TransactionServiceFee, error)
 		GetRemainingByCompanies(context.Context, []int64) ([]ServiceFeeRemainingRow, error)
 	}
