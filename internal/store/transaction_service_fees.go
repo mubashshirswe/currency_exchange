@@ -19,7 +19,6 @@ type TransactionServiceFee struct {
 	TransactionID    int64  `json:"transaction_id"`
 	CompanyID        int64  `json:"company_id"`
 	Amount           int64  `json:"amount"`
-	RemainingAmount  int64  `json:"remaining_amount"`
 	Currency         string `json:"currency"`
 	Details          string `json:"details"`
 	Status           int64  `json:"status"`
@@ -55,12 +54,12 @@ func NewTransactionServiceFeeStorage(db DBTX) *TransactionServiceFeeStorage {
 
 func (s *TransactionServiceFeeStorage) Create(ctx context.Context, f *TransactionServiceFee) error {
 	query := `INSERT INTO transaction_service_fees
-		(transaction_id, company_id, amount, remaining_amount, currency, details, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		(transaction_id, company_id, amount, currency, details, status)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, created_at`
 	var createdAt time.Time
 	if err := s.db.QueryRowContext(ctx, query,
-		f.TransactionID, f.CompanyID, f.Amount, f.RemainingAmount,
+		f.TransactionID, f.CompanyID, f.Amount,
 		f.Currency, f.Details, f.Status,
 	).Scan(&f.ID, &createdAt); err != nil {
 		return err
@@ -70,13 +69,13 @@ func (s *TransactionServiceFeeStorage) Create(ctx context.Context, f *Transactio
 }
 
 func (s *TransactionServiceFeeStorage) GetByTransactionID(ctx context.Context, txID int64) (*TransactionServiceFee, error) {
-	query := `SELECT id, transaction_id, company_id, amount, remaining_amount,
+	query := `SELECT id, transaction_id, company_id, amount,
 		currency, COALESCE(details, ''), status, created_at
 		FROM transaction_service_fees WHERE transaction_id = $1`
 	f := &TransactionServiceFee{}
 	var createdAt time.Time
 	err := s.db.QueryRowContext(ctx, query, txID).Scan(
-		&f.ID, &f.TransactionID, &f.CompanyID, &f.Amount, &f.RemainingAmount,
+		&f.ID, &f.TransactionID, &f.CompanyID, &f.Amount,
 		&f.Currency, &f.Details, &f.Status, &createdAt,
 	)
 	if err != nil {
@@ -88,11 +87,11 @@ func (s *TransactionServiceFeeStorage) GetByTransactionID(ctx context.Context, t
 
 func (s *TransactionServiceFeeStorage) Update(ctx context.Context, f *TransactionServiceFee) error {
 	query := `UPDATE transaction_service_fees SET
-		company_id = $1, amount = $2, remaining_amount = $3,
-		currency = $4, details = $5, status = $6
-		WHERE id = $7`
+		company_id = $1, amount = $2,
+		currency = $3, details = $4, status = $5
+		WHERE id = $6`
 	_, err := s.db.ExecContext(ctx, query,
-		f.CompanyID, f.Amount, f.RemainingAmount,
+		f.CompanyID, f.Amount,
 		f.Currency, f.Details, f.Status, f.ID,
 	)
 	return err
@@ -107,11 +106,11 @@ func (s *TransactionServiceFeeStorage) DeleteByTransactionID(ctx context.Context
 func (s *TransactionServiceFeeStorage) ListPendingFIFO(
 	ctx context.Context, companyID int64, currency string,
 ) ([]TransactionServiceFee, error) {
-	query := `SELECT id, transaction_id, company_id, amount, remaining_amount,
+	query := `SELECT id, transaction_id, company_id, amount,
 		currency, COALESCE(details, ''), status, created_at
 		FROM transaction_service_fees
 		WHERE company_id = $1 AND currency = $2
-		  AND status = $3 AND remaining_amount > 0
+		  AND status = $3 AND amount > 0
 		ORDER BY created_at ASC, id ASC`
 	rows, err := s.db.QueryContext(ctx, query, companyID, currency, ServiceFeeStatusPending)
 	if err != nil {
@@ -125,10 +124,10 @@ func (s *TransactionServiceFeeStorage) ListPendingFIFO(
 func (s *TransactionServiceFeeStorage) ListAllPending(
 	ctx context.Context, currency string,
 ) ([]TransactionServiceFee, error) {
-	query := `SELECT id, transaction_id, company_id, amount, remaining_amount,
+	query := `SELECT id, transaction_id, company_id, amount,
 		currency, COALESCE(details, ''), status, created_at
 		FROM transaction_service_fees
-		WHERE status = $1`
+		WHERE status = $1 AND amount > 0`
 	args := []any{ServiceFeeStatusPending}
 	if currency != "" {
 		query += ` AND currency = $2`
@@ -151,7 +150,7 @@ func (s *TransactionServiceFeeStorage) ListByCompany(
 	pagination types.Pagination,
 ) ([]TransactionServiceFee, error) {
 	query := `
-		SELECT f.id, f.transaction_id, f.company_id, f.amount, f.remaining_amount,
+		SELECT f.id, f.transaction_id, f.company_id, f.amount,
 		       f.currency, COALESCE(f.details, ''), f.status, f.created_at,
 		       COALESCE(t.phone, ''),
 		       COALESCE(NULLIF(trim(t.number::text), '')::bigint, 0)
@@ -185,7 +184,7 @@ func (s *TransactionServiceFeeStorage) ListByCompany(
 		var f TransactionServiceFee
 		var createdAt time.Time
 		if err := rows.Scan(
-			&f.ID, &f.TransactionID, &f.CompanyID, &f.Amount, &f.RemainingAmount,
+			&f.ID, &f.TransactionID, &f.CompanyID, &f.Amount,
 			&f.Currency, &f.Details, &f.Status, &createdAt,
 			&f.TransactionPhone, &f.TransactionNo,
 		); err != nil {
@@ -204,9 +203,9 @@ func (s *TransactionServiceFeeStorage) ListByCompany(
 func (s *TransactionServiceFeeStorage) GetRemainingByCompanies(
 	ctx context.Context, companyIDs []int64,
 ) ([]ServiceFeeRemainingRow, error) {
-	query := `SELECT company_id, currency, COALESCE(SUM(remaining_amount), 0)::bigint
+	query := `SELECT company_id, currency, COALESCE(SUM(amount), 0)::bigint
 		FROM transaction_service_fees
-		WHERE company_id = ANY($1) AND status = $2
+		WHERE company_id = ANY($1) AND status = $2 AND amount > 0
 		GROUP BY company_id, currency`
 	rows, err := s.db.QueryContext(ctx, query, pq.Array(companyIDs), ServiceFeeStatusPending)
 	if err != nil {
@@ -318,7 +317,7 @@ func scanServiceFees(rows feeRowScanner) ([]TransactionServiceFee, error) {
 		var f TransactionServiceFee
 		var createdAt time.Time
 		if err := rows.Scan(
-			&f.ID, &f.TransactionID, &f.CompanyID, &f.Amount, &f.RemainingAmount,
+			&f.ID, &f.TransactionID, &f.CompanyID, &f.Amount,
 			&f.Currency, &f.Details, &f.Status, &createdAt,
 		); err != nil {
 			return nil, err

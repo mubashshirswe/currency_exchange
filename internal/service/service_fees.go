@@ -43,13 +43,12 @@ func (s *ServiceFeeService) syncFromTransaction(
 	existing, err := fees.GetByTransactionID(ctx, tran.ID)
 	if err == sql.ErrNoRows {
 		f := &store.TransactionServiceFee{
-			TransactionID:   tran.ID,
-			CompanyID:       companyID,
-			Amount:          tran.ServiceFeeAmount,
-			RemainingAmount: tran.ServiceFeeAmount,
-			Currency:        currency,
-			Details:         tran.ServiceFeeDetails,
-			Status:          store.ServiceFeeStatusPending,
+			TransactionID: tran.ID,
+			CompanyID:     companyID,
+			Amount:        tran.ServiceFeeAmount,
+			Currency:      currency,
+			Details:       tran.ServiceFeeDetails,
+			Status:        store.ServiceFeeStatusPending,
 		}
 		return fees.Create(ctx, f)
 	}
@@ -58,21 +57,14 @@ func (s *ServiceFeeService) syncFromTransaction(
 	}
 
 	existing.CompanyID = companyID
-	existing.Amount = tran.ServiceFeeAmount
-	if existing.RemainingAmount > tran.ServiceFeeAmount {
-		existing.RemainingAmount = tran.ServiceFeeAmount
-	}
 	existing.Currency = currency
 	existing.Details = tran.ServiceFeeDetails
-	if existing.RemainingAmount <= 0 {
-		existing.Status = store.ServiceFeeStatusSettled
-		existing.RemainingAmount = 0
-	} else if existing.RemainingAmount < existing.Amount {
-		existing.Status = store.ServiceFeeStatusPending
-	} else {
-		existing.RemainingAmount = tran.ServiceFeeAmount
-		existing.Status = store.ServiceFeeStatusPending
+	if existing.Status == store.ServiceFeeStatusSettled {
+		return fees.Update(ctx, existing)
 	}
+
+	existing.Amount = tran.ServiceFeeAmount
+	existing.Status = store.ServiceFeeStatusPending
 	return fees.Update(ctx, existing)
 }
 
@@ -184,7 +176,7 @@ func (s *ServiceFeeService) Settle(
 
 	var available int64
 	for _, f := range pending {
-		available += f.RemainingAmount
+		available += f.Amount
 	}
 	if available <= 0 {
 		return nil, fmt.Errorf("Taqsimlanmagan xizmat puli yo'q")
@@ -210,14 +202,14 @@ func (s *ServiceFeeService) Settle(
 			break
 		}
 		f := &pending[i]
-		use := f.RemainingAmount
+		use := f.Amount
 		if use > left {
+			f.Amount -= left
 			use = left
-		}
-		f.RemainingAmount -= use
-		if f.RemainingAmount <= 0 {
-			f.RemainingAmount = 0
+			left = 0
+		} else {
 			f.Status = store.ServiceFeeStatusSettled
+			left -= use
 		}
 		if err := feeStorage.Update(ctx, f); err != nil {
 			return nil, err
@@ -225,7 +217,6 @@ func (s *ServiceFeeService) Settle(
 		if err := itemStorage.Create(ctx, st.ID, f.ID, use); err != nil {
 			return nil, err
 		}
-		left -= use
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -252,11 +243,7 @@ func (s *ServiceFeeService) settleAllPending(
 
 	var total int64
 	for _, f := range pending {
-		if f.RemainingAmount > 0 {
-			total += f.RemainingAmount
-		} else {
-			total += f.Amount
-		}
+		total += f.Amount
 	}
 	if total <= 0 {
 		return nil, fmt.Errorf("Taqsimlanmagan xizmat puli yo'q")
@@ -275,11 +262,7 @@ func (s *ServiceFeeService) settleAllPending(
 
 	for i := range pending {
 		f := &pending[i]
-		use := f.RemainingAmount
-		if use <= 0 {
-			use = f.Amount
-		}
-		f.RemainingAmount = 0
+		use := f.Amount
 		f.Status = store.ServiceFeeStatusSettled
 		if err := feeStorage.Update(ctx, f); err != nil {
 			return nil, err
