@@ -213,30 +213,35 @@ func getIDFromContext(r *http.Request) int64 {
 }
 
 func (app *application) LoadPaginationInfo(r *http.Request, ctx context.Context) {
+	app.Pagination = app.paginationFromRequest(r, ctx)
+}
+
+func (app *application) paginationFromRequest(r *http.Request, ctx context.Context) types.Pagination {
 	page, err := strconv.Atoi(r.URL.Query().Get("page"))
 	if err != nil || page < 1 {
 		page = 1
 	}
-	app.Pagination.Page = page
 
 	orderBy := r.URL.Query().Get("order_by")
-	if orderBy != "" {
-		app.Pagination.OrderBy = orderBy
-	} else {
-		app.Pagination.OrderBy = "balance DESC"
+	if orderBy == "" {
+		orderBy = "balance DESC"
 	}
 
 	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil || limit < 1 {
 		limit = 10
 	}
-	app.Pagination.Limit = limit
 
-	offset := (page - 1) * limit
-	app.Pagination.Offset = offset
+	userID, _ := ctx.Value(UserKey).(int64)
 
-	userID, _ := ctx.Value(UserKey).(int)
-	app.Pagination.UserId = int64(userID)
+	p := types.Pagination{
+		Page:    page,
+		Limit:   limit,
+		Offset:  (page - 1) * limit,
+		OrderBy: orderBy,
+		UserId:  userID,
+	}
 
-	log.Printf("pagination  page: %v,  limit = %v", app.Pagination.Limit, app.Pagination.Offset)
+	log.Printf("pagination page=%v limit=%v offset=%v", p.Page, p.Limit, p.Offset)
+	return p
 }

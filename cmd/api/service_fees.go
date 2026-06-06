@@ -27,13 +27,17 @@ func (app *application) GetTransactionServiceFeesHandler(w http.ResponseWriter, 
 		}
 	}
 
-	app.LoadPaginationInfo(r, r.Context())
+	pagination := app.paginationFromRequest(r, r.Context())
 	fees, err := app.service.ServiceFees.ListFees(
-		r.Context(), companyID, currency, status, app.Pagination,
+		r.Context(), companyID, currency, status, pagination,
 	)
 	if err != nil {
-		app.internalServerError(w, r, err)
-		return
+		if isMissingDBRelation(err) {
+			fees = nil
+		} else {
+			app.internalServerError(w, r, err)
+			return
+		}
 	}
 	if err := app.writeResponse(w, http.StatusOK, fees); err != nil {
 		app.internalServerError(w, r, err)
@@ -48,14 +52,18 @@ func (app *application) GetServiceFeeSettlementsHandler(w http.ResponseWriter, r
 	}
 
 	currency := strings.TrimSpace(r.URL.Query().Get("currency"))
-	app.LoadPaginationInfo(r, r.Context())
+	pagination := app.paginationFromRequest(r, r.Context())
 
 	rows, err := app.service.ServiceFees.ListSettlements(
-		r.Context(), companyID, currency, app.Pagination,
+		r.Context(), companyID, currency, pagination,
 	)
 	if err != nil {
-		app.internalServerError(w, r, err)
-		return
+		if isMissingDBRelation(err) {
+			rows = nil
+		} else {
+			app.internalServerError(w, r, err)
+			return
+		}
 	}
 	if err := app.writeResponse(w, http.StatusOK, rows); err != nil {
 		app.internalServerError(w, r, err)
@@ -97,4 +105,12 @@ func parseInt64(s string) (int64, error) {
 	var v int64
 	_, err := fmt.Sscanf(s, "%d", &v)
 	return v, err
+}
+
+func isMissingDBRelation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "does not exist")
 }

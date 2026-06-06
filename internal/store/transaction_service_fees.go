@@ -131,7 +131,7 @@ func (s *TransactionServiceFeeStorage) ListByCompany(
 	query := `
 		SELECT f.id, f.transaction_id, f.company_id, f.amount, f.remaining_amount,
 		       f.currency, COALESCE(f.details, ''), f.status, f.created_at,
-		       COALESCE(t.phone, ''), f.transaction_id
+		       COALESCE(t.phone, ''), COALESCE(t.number, 0)
 		FROM transaction_service_fees f
 		LEFT JOIN transactions t ON t.id = f.transaction_id
 		WHERE f.company_id = $1`
