@@ -653,10 +653,7 @@ func (s *TransactionService) GetInfos(ctx context.Context, date string) ([]store
 		return nil, fmt.Errorf("ERROR OCCURRED WHILE Transactions.GetCompanyFinalAmounts %v", err)
 	}
 
-	feeSvc := NewServiceFeeService(s.store)
-	if err := feeSvc.AttachRemainingToCompanyAmounts(ctx, trans, companies); err != nil {
-		return nil, fmt.Errorf("failed to attach service fee remaining: %w", err)
-	}
+	_ = NewServiceFeeService(s.store).AttachRemainingToCompanyAmounts(ctx, trans, companies)
 
 	return trans, nil
 }

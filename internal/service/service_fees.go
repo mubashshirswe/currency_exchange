@@ -108,7 +108,8 @@ func (s *ServiceFeeService) AttachRemainingToCompanyAmounts(
 
 	rows, err := s.store.TransactionServiceFees.GetRemainingByCompanies(ctx, ids)
 	if err != nil {
-		return err
+		// Jadval hali migrate qilinmagan bo'lishi mumkin — info kartani buzmaymiz.
+		return nil
 	}
 
 	remainingMap := map[string]float64{}

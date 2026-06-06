@@ -58,10 +58,15 @@ func (s *TransactionServiceFeeStorage) Create(ctx context.Context, f *Transactio
 		(transaction_id, company_id, amount, remaining_amount, currency, details, status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, created_at`
-	return s.db.QueryRowContext(ctx, query,
+	var createdAt time.Time
+	if err := s.db.QueryRowContext(ctx, query,
 		f.TransactionID, f.CompanyID, f.Amount, f.RemainingAmount,
 		f.Currency, f.Details, f.Status,
-	).Scan(&f.ID, &f.CreatedAt)
+	).Scan(&f.ID, &createdAt); err != nil {
+		return err
+	}
+	f.CreatedAt = formatTashkent(createdAt)
+	return nil
 }
 
 func (s *TransactionServiceFeeStorage) GetByTransactionID(ctx context.Context, txID int64) (*TransactionServiceFee, error) {
@@ -126,7 +131,7 @@ func (s *TransactionServiceFeeStorage) ListByCompany(
 	query := `
 		SELECT f.id, f.transaction_id, f.company_id, f.amount, f.remaining_amount,
 		       f.currency, COALESCE(f.details, ''), f.status, f.created_at,
-		       COALESCE(t.phone, ''), COALESCE(t.number, 0)
+		       COALESCE(t.phone, ''), f.transaction_id
 		FROM transaction_service_fees f
 		LEFT JOIN transactions t ON t.id = f.transaction_id
 		WHERE f.company_id = $1`
@@ -209,9 +214,14 @@ func (s *ServiceFeeSettlementStorage) Create(ctx context.Context, st *ServiceFee
 		(company_id, user_id, amount, currency, details)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, created_at`
-	return s.db.QueryRowContext(ctx, query,
+	var createdAt time.Time
+	if err := s.db.QueryRowContext(ctx, query,
 		st.CompanyID, st.UserID, st.Amount, st.Currency, st.Details,
-	).Scan(&st.ID, &st.CreatedAt)
+	).Scan(&st.ID, &createdAt); err != nil {
+		return err
+	}
+	st.CreatedAt = formatTashkent(createdAt)
+	return nil
 }
 
 func (s *ServiceFeeSettlementStorage) ListByCompany(
