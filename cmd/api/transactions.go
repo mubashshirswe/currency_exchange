@@ -246,6 +246,15 @@ func (app *application) GetTransactionsByFieldHandler(w http.ResponseWriter, r *
 		return
 	}
 
+	user, err := app.currentUser(r)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	if !app.isAdminUser(user) {
+		transactions = maskTransactionListServiceFees(transactions, user.CompanyId)
+	}
+
 	if err := app.writeResponse(w, http.StatusOK, transactions); err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -360,5 +369,69 @@ func (app *application) DeleteTransactionHandler(w http.ResponseWriter, r *http.
 	if err := app.writeResponse(w, http.StatusOK, "DELETED"); err != nil {
 		app.internalServerError(w, r, err)
 		return
+	}
+}
+
+func maskTransactionListServiceFees(
+	items []map[string]interface{},
+	viewerCompanyID int64,
+) []map[string]interface{} {
+	for i, item := range items {
+		if transactionServiceFeeVisibleToCompany(item, viewerCompanyID) {
+			continue
+		}
+		item["service_fee"] = ""
+		item["service_fee_amount"] = int64(0)
+		item["service_fee_currency"] = ""
+		item["service_fee_details"] = ""
+		items[i] = item
+	}
+	return items
+}
+
+func transactionServiceFeeVisibleToCompany(
+	item map[string]interface{},
+	companyID int64,
+) bool {
+	deliveredUserID := mapInt64Ptr(item["delivered_user_id"])
+	receivedCompanyID := mapInt64(item["received_company_id"])
+	deliveredCompanyID := mapInt64(item["delivered_company_id"])
+
+	if deliveredUserID != nil && *deliveredUserID > 0 {
+		return deliveredCompanyID == companyID
+	}
+	return receivedCompanyID == companyID
+}
+
+func mapInt64(v any) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case float64:
+		return int64(n)
+	default:
+		return 0
+	}
+}
+
+func mapInt64Ptr(v any) *int64 {
+	if v == nil {
+		return nil
+	}
+	switch n := v.(type) {
+	case *int64:
+		return n
+	case int64:
+		return &n
+	case int:
+		i := int64(n)
+		return &i
+	case float64:
+		i := int64(n)
+		return &i
+	default:
+		return nil
 	}
 }
