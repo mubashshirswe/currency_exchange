@@ -1,6 +1,29 @@
 -- Har bir kompaniya (received_company_id) uchun alohida transaction raqami.
-ALTER TABLE transactions
-    ADD COLUMN IF NOT EXISTS number bigint;
+-- Production'da number ustuni avval text bo'lib qolgan bo'lishi mumkin — bigint ga o'tkazamiz.
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'transactions'
+          AND column_name = 'number'
+          AND data_type IN ('text', 'character varying')
+    ) THEN
+        ALTER TABLE transactions
+            ALTER COLUMN number TYPE bigint
+            USING NULLIF(trim(number::text), '')::bigint;
+    ELSIF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'transactions'
+          AND column_name = 'number'
+    ) THEN
+        ALTER TABLE transactions ADD COLUMN number bigint;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS transaction_company_counters (
     company_id bigint PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,
@@ -14,17 +37,18 @@ WITH numbered AS (
         ROW_NUMBER() OVER (
             PARTITION BY received_company_id
             ORDER BY created_at ASC, id ASC
-        ) AS rn
+        )::bigint AS rn
     FROM transactions
     WHERE received_company_id IS NOT NULL
 )
 UPDATE transactions t
 SET number = n.rn
 FROM numbered n
-WHERE t.id = n.id;
+WHERE t.id = n.id
+  AND (t.number IS NULL OR t.number = 0);
 
 UPDATE transactions
-SET number = id
+SET number = id::bigint
 WHERE number IS NULL;
 
 ALTER TABLE transactions
@@ -38,7 +62,9 @@ ALTER TABLE transactions
         UNIQUE (received_company_id, number);
 
 INSERT INTO transaction_company_counters (company_id, last_number)
-SELECT received_company_id, MAX(number)
+SELECT
+    received_company_id,
+    COALESCE(MAX(number::bigint), 0)::bigint
 FROM transactions
 WHERE received_company_id IS NOT NULL
 GROUP BY received_company_id
