@@ -462,6 +462,9 @@ func (s *TransactionService) GetByCompanyId(ctx context.Context, companyId int64
 			}
 
 			res := map[string]interface{}{
+				"id":                   tran.ID,
+				"number":               tran.Number,
+				"delivered_number":     tran.DeliveredNumber,
 				"service_fee":          formatServiceFee(tran.ServiceFeeAmount, tran.ServiceFeeCurrency, tran.ServiceFeeDetails),
 				"service_fee_amount":   tran.ServiceFeeAmount,
 				"service_fee_currency": tran.ServiceFeeCurrency,
@@ -539,6 +542,7 @@ func (s *TransactionService) GetByField(ctx context.Context, search *string, fie
 		res := map[string]interface{}{
 			"id":                   tran.ID,
 			"number":               tran.Number,
+			"delivered_number":     tran.DeliveredNumber,
 			"received_company_id":  tran.ReceivedCompanyId,
 			"received_company":     receivedCompanyName,
 			"received_user_id":     tran.ReceivedUserId,
@@ -610,6 +614,7 @@ func (s *TransactionService) Archived(ctx context.Context, pagination types.Pagi
 		res := map[string]interface{}{
 			"id":                   tran.ID,
 			"number":               tran.Number,
+			"delivered_number":     tran.DeliveredNumber,
 			"received_company_id":  tran.ReceivedCompanyId,
 			"received_company":     receivedCompanyName,
 			"received_user_id":     tran.ReceivedUserId,
