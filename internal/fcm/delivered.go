@@ -124,10 +124,21 @@ func (n *DeliveredNotifier) sendMulticast(
 		return notify.SendResult{TokenCount: len(tokens)}, err
 	}
 	log.Printf("fcm sent title=%q tokens=%d success=%d failure=%d", title, len(tokens), br.SuccessCount, br.FailureCount)
+
+	var tokenErrors []notify.TokenError
 	for i, resp := range br.Responses {
 		if resp.Success {
 			continue
 		}
+		errMsg := "unknown error"
+		if resp.Error != nil {
+			errMsg = resp.Error.Error()
+		}
+		log.Printf("fcm token failed preview=%s err=%s", tokenPreview(tokens[i]), errMsg)
+		tokenErrors = append(tokenErrors, notify.TokenError{
+			TokenPreview: tokenPreview(tokens[i]),
+			Error:        errMsg,
+		})
 		if messaging.IsRegistrationTokenNotRegistered(resp.Error) || messaging.IsInvalidArgument(resp.Error) {
 			if err := n.store.UserSessions.DeleteByFCMToken(ctx, tokens[i]); err != nil {
 				log.Printf("fcm cleanup token: %v", err)
@@ -138,5 +149,13 @@ func (n *DeliveredNotifier) sendMulticast(
 		TokenCount:   len(tokens),
 		SuccessCount: br.SuccessCount,
 		FailureCount: br.FailureCount,
+		Errors:       tokenErrors,
 	}, nil
+}
+
+func tokenPreview(token string) string {
+	if len(token) <= 16 {
+		return token
+	}
+	return token[:8] + "…" + token[len(token)-6:]
 }

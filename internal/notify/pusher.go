@@ -2,12 +2,19 @@ package notify
 
 import "context"
 
+// TokenError — bitta token uchun FCM xatosi.
+type TokenError struct {
+	TokenPreview string `json:"token_preview"`
+	Error        string `json:"error"`
+}
+
 // SendResult — bitta user uchun multicast natijasi.
 type SendResult struct {
-	UserID       int64 `json:"user_id"`
-	TokenCount   int   `json:"tokens"`
-	SuccessCount int   `json:"success"`
-	FailureCount int   `json:"failure"`
+	UserID       int64        `json:"user_id"`
+	TokenCount   int          `json:"tokens"`
+	SuccessCount int          `json:"success"`
+	FailureCount int          `json:"failure"`
+	Errors       []TokenError `json:"errors,omitempty"`
 }
 
 // Pusher — userning barcha qurilmalariga push yuboradi.
