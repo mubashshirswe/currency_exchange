@@ -62,19 +62,29 @@ func (s *TransactionStorage) Archive(ctx context.Context, companyId int64) error
 	return nil
 }
 
-func (s *TransactionStorage) allocateNumber(ctx context.Context, companyID int64) (int64, error) {
+func (s *TransactionStorage) allocateReceivedNumber(ctx context.Context, companyID int64) (int64, error) {
+	return s.allocateFromCounter(ctx, "transaction_company_counters", companyID)
+}
+
+func (s *TransactionStorage) allocateDeliveredNumber(ctx context.Context, companyID int64) (int64, error) {
+	return s.allocateFromCounter(ctx, "transaction_delivered_company_counters", companyID)
+}
+
+func (s *TransactionStorage) allocateFromCounter(ctx context.Context, table string, companyID int64) (int64, error) {
 	if companyID == 0 {
 		return 0, fmt.Errorf("company_id is required for transaction number")
 	}
 
 	var number int64
-	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO transaction_company_counters (company_id, last_number)
+	query := fmt.Sprintf(`
+		INSERT INTO %s (company_id, last_number)
 		VALUES ($1, 1)
 		ON CONFLICT (company_id) DO UPDATE
-			SET last_number = transaction_company_counters.last_number + 1
+			SET last_number = %s.last_number + 1
 		RETURNING last_number
-	`, companyID).Scan(&number)
+	`, table, table)
+
+	err := s.db.QueryRowContext(ctx, query, companyID).Scan(&number)
 	if err != nil {
 		return 0, err
 	}
@@ -93,13 +103,13 @@ func (s *TransactionStorage) Create(ctx context.Context, tr *Transaction) error 
 		return err
 	}
 
-	number, err := s.allocateNumber(ctx, tr.ReceivedCompanyId)
+	number, err := s.allocateReceivedNumber(ctx, tr.ReceivedCompanyId)
 	if err != nil {
 		return err
 	}
 	tr.Number = number
 
-	deliveredNumber, err := s.allocateNumber(ctx, tr.DeliveredCompanyId)
+	deliveredNumber, err := s.allocateDeliveredNumber(ctx, tr.DeliveredCompanyId)
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS transaction_delivered_company_counters;
