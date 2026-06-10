@@ -273,17 +273,21 @@ func (app *application) GetInfosByCompanyIdHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	var scopeCompanyID *int64
-	if !app.isAdminUser(user) {
-		scopeCompanyID = &user.CompanyId
-	}
-
 	transactions, err := app.service.Transactions.GetInfos(
-		r.Context(), chi.URLParam(r, "date"), scopeCompanyID,
+		r.Context(), chi.URLParam(r, "date"),
 	)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
+	}
+
+	if !app.isAdminUser(user) {
+		for i := range transactions {
+			if transactions[i].CompanyID != user.CompanyId {
+				transactions[i].ServiceFeeAmount = 0
+				transactions[i].ServiceFeeRemaining = 0
+			}
+		}
 	}
 
 	if err := app.writeResponse(w, http.StatusOK, transactions); err != nil {

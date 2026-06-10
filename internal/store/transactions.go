@@ -476,6 +476,7 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 }
 
 type CompanyAmount struct {
+	CompanyID           int64
 	CompanyName         string
 	Currency            string
 	OlinganAmount       float64
@@ -515,6 +516,7 @@ with all_outcomes as (
     where t.delivered_company_id = ANY($1) or t.received_company_id = ANY($1)
 )
 select 
+    a.company_id,
     c.name as company_name,
     a.currency,
     
@@ -599,6 +601,7 @@ order by a.company_id, a.currency;
 	for rows.Next() {
 		var ca CompanyAmount
 		if err := rows.Scan(
+			&ca.CompanyID,
 			&ca.CompanyName,
 			&ca.Currency,
 			&ca.OlinganAmount,

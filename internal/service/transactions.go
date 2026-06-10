@@ -641,21 +641,10 @@ func (s *TransactionService) Archived(ctx context.Context, pagination types.Pagi
 	return response, nil
 }
 
-func (s *TransactionService) GetInfos(ctx context.Context, date string, scopeCompanyID *int64) ([]store.CompanyAmount, error) {
+func (s *TransactionService) GetInfos(ctx context.Context, date string) ([]store.CompanyAmount, error) {
 	companies, err := s.store.Companies.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load companies: %w", err)
-	}
-
-	if scopeCompanyID != nil {
-		filtered := make([]store.Company, 0, 1)
-		for _, c := range companies {
-			if c.ID == *scopeCompanyID {
-				filtered = append(filtered, c)
-				break
-			}
-		}
-		companies = filtered
 	}
 
 	companyIDs := make([]int64, 0, len(companies))
