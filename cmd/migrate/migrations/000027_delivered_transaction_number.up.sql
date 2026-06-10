@@ -33,6 +33,12 @@ ALTER TABLE transactions
     ADD CONSTRAINT transactions_delivered_company_number_unique
         UNIQUE (delivered_company_id, delivered_number);
 
+-- 000025 o'tkazilmagan yoki force qilingan DB'larda jadval bo'lmasligi mumkin.
+CREATE TABLE IF NOT EXISTS transaction_company_counters (
+    company_id bigint PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,
+    last_number bigint NOT NULL DEFAULT 0
+);
+
 INSERT INTO transaction_company_counters (company_id, last_number)
 SELECT
     delivered_company_id,

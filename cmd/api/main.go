@@ -63,14 +63,21 @@ func main() {
 
 	store := store.NewStorage(db)
 
-	var delivered notify.DeliveredUser = notify.NoopDeliveredUser{}
+	var (
+		delivered notify.DeliveredUser = notify.NoopDeliveredUser{}
+		pusher    notify.Pusher        = notify.NoopPusher{}
+	)
 	if creds := env.GetString("FIREBASE_CREDENTIALS_PATH", ""); creds != "" {
 		n, err := fcm.NewDeliveredNotifier(creds, store)
 		if err != nil {
 			log.Printf("FCM notifier disabled: %v", err)
 		} else {
 			delivered = n
+			pusher = n
+			log.Printf("FCM notifier enabled (credentials: %s)", creds)
 		}
+	} else {
+		log.Printf("FCM notifier disabled: FIREBASE_CREDENTIALS_PATH is empty")
 	}
 
 	service := service.NewService(store, delivered)
@@ -82,6 +89,7 @@ func main() {
 		config:     cfg,
 		store:      store,
 		service:    service,
+		pusher:     pusher,
 		cacheStore: cacheStore,
 		dedup:      newIdempotencyGuard(dedupWindow),
 	}

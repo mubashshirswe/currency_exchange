@@ -23,14 +23,16 @@ if [ -f .env ]; then
   grep -q '^POSTGRES_PASSWORD=' .env && pass "POSTGRES_PASSWORD" || fail "POSTGRES_PASSWORD .env da yo'q"
 fi
 
-if grep -q 'firebase-adminsdk.json:/secrets/firebase.json' docker-compose.yml 2>/dev/null; then
+if grep -q 'firebase.json:/secrets/firebase.json' docker-compose.yml 2>/dev/null; then
   pass "docker-compose.yml (Firebase volume)"
 fi
 
-if [ -f secrets/firebase-adminsdk.json ]; then
-  pass "secrets/firebase-adminsdk.json"
+if [ -f secrets/firebase.json ]; then
+  pass "secrets/firebase.json"
+elif [ -f secrets/firebase-adminsdk.json ]; then
+  warn "secrets/firebase-adminsdk.json bor — mv secrets/firebase-adminsdk.json secrets/firebase.json"
 elif grep -q 'FIREBASE_CREDENTIALS_PATH=/secrets' .env 2>/dev/null; then
-  fail "Firebase JSON yo'q: secrets/firebase-adminsdk.json"
+  fail "Firebase JSON yo'q: secrets/firebase.json"
 fi
 
 echo ""

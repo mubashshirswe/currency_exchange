@@ -30,7 +30,10 @@ func NewDeliveredNotifier(credsPath string, st store.Storage) (*DeliveredNotifie
 	return &DeliveredNotifier{store: st, client: client}, nil
 }
 
-var _ notify.DeliveredUser = (*DeliveredNotifier)(nil)
+var (
+	_ notify.DeliveredUser = (*DeliveredNotifier)(nil)
+	_ notify.Pusher        = (*DeliveredNotifier)(nil)
+)
 
 func (n *DeliveredNotifier) NotifyPendingDelivery(ctx context.Context, deliveredUserID *int64, txnID int64, phone, details string) {
 	if deliveredUserID == nil {
@@ -46,10 +49,16 @@ func (n *DeliveredNotifier) NotifyPendingDelivery(ctx context.Context, delivered
 
 func (n *DeliveredNotifier) NotifyNewOrderToCompany(ctx context.Context, companyID int64, txnID int64, phone, details string) {
 	if companyID == 0 {
+		log.Printf("fcm NotifyNewOrderToCompany: skip companyID=0 txn=%d", txnID)
 		return
 	}
 	tokens, err := n.store.UserSessions.FCMTokensByCompanyID(ctx, companyID)
-	if err != nil || len(tokens) == 0 {
+	if err != nil {
+		log.Printf("fcm NotifyNewOrderToCompany: tokens lookup failed company=%d txn=%d: %v", companyID, txnID, err)
+		return
+	}
+	if len(tokens) == 0 {
+		log.Printf("fcm NotifyNewOrderToCompany: no tokens for company=%d txn=%d", companyID, txnID)
 		return
 	}
 	n.sendMulticast(ctx, tokens, "Yangi buyurtma", "Yangi buyurtma qabul qilindi", map[string]string{
@@ -72,17 +81,37 @@ func (n *DeliveredNotifier) NotifyDeliveryCompleted(ctx context.Context, deliver
 	})
 }
 
-func (n *DeliveredNotifier) sendToUser(ctx context.Context, userID int64, title, body string, data map[string]string) {
+func (n *DeliveredNotifier) SendToUser(
+	ctx context.Context,
+	userID int64,
+	title, body string,
+	data map[string]string,
+) (notify.SendResult, error) {
 	tokens, err := n.store.UserSessions.FCMTokensByUserID(ctx, userID)
-	if err != nil || len(tokens) == 0 {
-		return
+	if err != nil {
+		return notify.SendResult{UserID: userID}, err
 	}
-	n.sendMulticast(ctx, tokens, title, body, data)
+	if len(tokens) == 0 {
+		log.Printf("fcm SendToUser: no tokens for user=%d title=%q", userID, title)
+		return notify.SendResult{UserID: userID}, nil
+	}
+	result, err := n.sendMulticast(ctx, tokens, title, body, data)
+	result.UserID = userID
+	return result, err
 }
 
-func (n *DeliveredNotifier) sendMulticast(ctx context.Context, tokens []string, title, body string, data map[string]string) {
+func (n *DeliveredNotifier) sendToUser(ctx context.Context, userID int64, title, body string, data map[string]string) {
+	_, _ = n.SendToUser(ctx, userID, title, body, data)
+}
+
+func (n *DeliveredNotifier) sendMulticast(
+	ctx context.Context,
+	tokens []string,
+	title, body string,
+	data map[string]string,
+) (notify.SendResult, error) {
 	if len(tokens) == 0 {
-		return
+		return notify.SendResult{}, nil
 	}
 	msg := &messaging.MulticastMessage{
 		Tokens:       tokens,
@@ -92,8 +121,9 @@ func (n *DeliveredNotifier) sendMulticast(ctx context.Context, tokens []string, 
 	br, err := n.client.SendEachForMulticast(ctx, msg)
 	if err != nil {
 		log.Printf("fcm SendEachForMulticast: %v", err)
-		return
+		return notify.SendResult{TokenCount: len(tokens)}, err
 	}
+	log.Printf("fcm sent title=%q tokens=%d success=%d failure=%d", title, len(tokens), br.SuccessCount, br.FailureCount)
 	for i, resp := range br.Responses {
 		if resp.Success {
 			continue
@@ -104,4 +134,9 @@ func (n *DeliveredNotifier) sendMulticast(ctx context.Context, tokens []string, 
 			}
 		}
 	}
+	return notify.SendResult{
+		TokenCount:   len(tokens),
+		SuccessCount: br.SuccessCount,
+		FailureCount: br.FailureCount,
+	}, nil
 }

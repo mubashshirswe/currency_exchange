@@ -51,7 +51,7 @@ services:
       redis:
         condition: service_started
     volumes:
-      - ./secrets/firebase-adminsdk.json:/secrets/firebase.json:ro
+      - ./secrets/firebase.json:/secrets/firebase.json:ro
 
 volumes:
   pgdata:

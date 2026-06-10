@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/mubashshir3767/currencyExchange/internal/notify"
 	"github.com/mubashshir3767/currencyExchange/internal/service"
 	"github.com/mubashshir3767/currencyExchange/internal/store"
 	"github.com/mubashshir3767/currencyExchange/internal/store/cache"
@@ -21,6 +22,7 @@ type application struct {
 	config     config
 	store      store.Storage
 	service    service.Service
+	pusher     notify.Pusher
 	cacheStore cache.Storage
 	dedup      *idempotencyGuard
 }
@@ -82,6 +84,8 @@ func (app *application) mount() *chi.Mux {
 			r.Get("/soft-balance-records", app.GetMySoftBalanceRecordsHandler)
 			r.Post("/soft-balance-records", app.CreateMySoftBalanceRecordHandler)
 			r.Delete("/soft-balance-records/{id}", app.DeleteMySoftBalanceRecordHandler)
+
+			r.Post("/notifications", app.SendUserNotificationHandler)
 
 			r.Route("/sessions", func(r chi.Router) {
 				r.Post("/", app.UpsertUserSessionHandler)
