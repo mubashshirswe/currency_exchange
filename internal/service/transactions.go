@@ -97,17 +97,19 @@ func (s *TransactionService) PerformTransaction(ctx context.Context, transaction
 		return err
 	}
 
-	if transaction.DeliveredUserId != nil {
-		uid := *transaction.DeliveredUserId
-		tid := transaction.ID
-		phone := transaction.Phone
-		details := transaction.Details
-		go func() {
-			ctxN, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-			defer cancel()
+	tid := transaction.ID
+	phone := transaction.Phone
+	details := transaction.Details
+	deliveredCompanyID := transaction.DeliveredCompanyId
+	go func() {
+		ctxN, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		s.notify.NotifyNewOrderToCompany(ctxN, deliveredCompanyID, tid, phone, details)
+		if transaction.DeliveredUserId != nil {
+			uid := *transaction.DeliveredUserId
 			s.notify.NotifyPendingDelivery(ctxN, &uid, tid, phone, details)
-		}()
-	}
+		}
+	}()
 	return nil
 }
 
@@ -607,6 +609,7 @@ func (s *TransactionService) Archived(ctx context.Context, pagination types.Pagi
 
 		res := map[string]interface{}{
 			"id":                   tran.ID,
+			"number":               tran.Number,
 			"received_company_id":  tran.ReceivedCompanyId,
 			"received_company":     receivedCompanyName,
 			"received_user_id":     tran.ReceivedUserId,
@@ -633,10 +636,21 @@ func (s *TransactionService) Archived(ctx context.Context, pagination types.Pagi
 	return response, nil
 }
 
-func (s *TransactionService) GetInfos(ctx context.Context, date string) ([]store.CompanyAmount, error) {
+func (s *TransactionService) GetInfos(ctx context.Context, date string, scopeCompanyID *int64) ([]store.CompanyAmount, error) {
 	companies, err := s.store.Companies.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load companies: %w", err)
+	}
+
+	if scopeCompanyID != nil {
+		filtered := make([]store.Company, 0, 1)
+		for _, c := range companies {
+			if c.ID == *scopeCompanyID {
+				filtered = append(filtered, c)
+				break
+			}
+		}
+		companies = filtered
 	}
 
 	companyIDs := make([]int64, 0, len(companies))

@@ -33,6 +33,14 @@ type opLink struct {
 	DebtId        *int64
 }
 
+// transactionServiceFeeCompanyID — xizmat haqi tranzaksiyani yaratgan kompaniyaga bog'lanadi.
+func transactionServiceFeeCompanyID(tr *store.Transaction, actingCompanyID int64) int64 {
+	if tr.ReceivedCompanyId != 0 {
+		return tr.ReceivedCompanyId
+	}
+	return actingCompanyID
+}
+
 // applyCompanyOp — bitta kirim/chiqimni company_balances'ga qo'llaydi va
 // company_balance_records'ga yozadi (hodim user_id + bog'langan operatsiya id bilan).
 func applyCompanyOp(
@@ -379,11 +387,9 @@ func (s *CompanyOpsService) PerformTransactionV2(ctx context.Context, transactio
 		return fmt.Errorf("ERROR OCCURRED WHILE Transactions.Create %v", err)
 	}
 
-	feeCompanyID := transaction.ReceivedCompanyId
-	if feeCompanyID == 0 {
-		feeCompanyID = companyID
-	}
-	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(ctx, tx, transaction, feeCompanyID); err != nil {
+	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(
+		ctx, tx, transaction, transactionServiceFeeCompanyID(transaction, companyID),
+	); err != nil {
 		return fmt.Errorf("service fee sync on create: %w", err)
 	}
 
@@ -399,17 +405,19 @@ func (s *CompanyOpsService) PerformTransactionV2(ctx context.Context, transactio
 		return err
 	}
 
-	if transaction.DeliveredUserId != nil {
-		uid := *transaction.DeliveredUserId
-		tid := transaction.ID
-		phone := transaction.Phone
-		details := transaction.Details
-		go func() {
-			ctxN, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-			defer cancel()
+	tid := transaction.ID
+	phone := transaction.Phone
+	details := transaction.Details
+	deliveredCompanyID := transaction.DeliveredCompanyId
+	go func() {
+		ctxN, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		s.notify.NotifyNewOrderToCompany(ctxN, deliveredCompanyID, tid, phone, details)
+		if transaction.DeliveredUserId != nil {
+			uid := *transaction.DeliveredUserId
 			s.notify.NotifyPendingDelivery(ctxN, &uid, tid, phone, details)
-		}()
-	}
+		}
+	}()
 	return nil
 }
 
@@ -462,11 +470,9 @@ func (s *CompanyOpsService) CompleteTransactionV2(ctx context.Context, complete 
 		return fmt.Errorf("ERROR OCCURRED WHILE transactionsStorage.Update %v", err)
 	}
 
-	feeCompanyID := tran.DeliveredCompanyId
-	if feeCompanyID == 0 {
-		feeCompanyID = companyID
-	}
-	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(ctx, tx, tran, feeCompanyID); err != nil {
+	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(
+		ctx, tx, tran, transactionServiceFeeCompanyID(tran, companyID),
+	); err != nil {
 		return fmt.Errorf("service fee sync on complete: %w", err)
 	}
 
@@ -541,14 +547,9 @@ func (s *CompanyOpsService) UpdateTransactionV2(ctx context.Context, transaction
 		}
 	}
 
-	feeCompanyID := transaction.ReceivedCompanyId
-	if transaction.DeliveredUserId != nil {
-		feeCompanyID = transaction.DeliveredCompanyId
-	}
-	if feeCompanyID == 0 {
-		feeCompanyID = companyID
-	}
-	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(ctx, tx, transaction, feeCompanyID); err != nil {
+	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(
+		ctx, tx, transaction, transactionServiceFeeCompanyID(transaction, companyID),
+	); err != nil {
 		return fmt.Errorf("service fee sync on update: %w", err)
 	}
 

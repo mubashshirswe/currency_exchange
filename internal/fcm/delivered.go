@@ -36,7 +36,23 @@ func (n *DeliveredNotifier) NotifyPendingDelivery(ctx context.Context, delivered
 	if deliveredUserID == nil {
 		return
 	}
-	n.send(ctx, *deliveredUserID, "Yangi tranzaksiya", "Yetkazib berish uchun yangi buyurtma", map[string]string{
+	n.sendToUser(ctx, *deliveredUserID, "Yangi tranzaksiya", "Yetkazib berish uchun yangi buyurtma", map[string]string{
+		"type":           "transaction_pending",
+		"transaction_id": strconv.FormatInt(txnID, 10),
+		"phone":          phone,
+		"details":        details,
+	})
+}
+
+func (n *DeliveredNotifier) NotifyNewOrderToCompany(ctx context.Context, companyID int64, txnID int64, phone, details string) {
+	if companyID == 0 {
+		return
+	}
+	tokens, err := n.store.UserSessions.FCMTokensByCompanyID(ctx, companyID)
+	if err != nil || len(tokens) == 0 {
+		return
+	}
+	n.sendMulticast(ctx, tokens, "Yangi buyurtma", "Yangi buyurtma qabul qilindi", map[string]string{
 		"type":           "transaction_pending",
 		"transaction_id": strconv.FormatInt(txnID, 10),
 		"phone":          phone,
@@ -49,16 +65,23 @@ func (n *DeliveredNotifier) NotifyDeliveryCompleted(ctx context.Context, deliver
 	if body == "" {
 		body = "Tranzaksiya muvaffaqiyatli yakunlandi"
 	}
-	n.send(ctx, deliveredUserID, "Tranzaksiya yakunlandi", body, map[string]string{
+	n.sendToUser(ctx, deliveredUserID, "Tranzaksiya yakunlandi", body, map[string]string{
 		"type":           "transaction_completed",
 		"transaction_id": strconv.FormatInt(txnID, 10),
 		"details":        details,
 	})
 }
 
-func (n *DeliveredNotifier) send(ctx context.Context, userID int64, title, body string, data map[string]string) {
+func (n *DeliveredNotifier) sendToUser(ctx context.Context, userID int64, title, body string, data map[string]string) {
 	tokens, err := n.store.UserSessions.FCMTokensByUserID(ctx, userID)
 	if err != nil || len(tokens) == 0 {
+		return
+	}
+	n.sendMulticast(ctx, tokens, title, body, data)
+}
+
+func (n *DeliveredNotifier) sendMulticast(ctx context.Context, tokens []string, title, body string, data map[string]string) {
+	if len(tokens) == 0 {
 		return
 	}
 	msg := &messaging.MulticastMessage{

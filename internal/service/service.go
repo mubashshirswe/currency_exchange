@@ -70,7 +70,7 @@ type Service struct {
 		PerformTransaction(context.Context, *store.Transaction) error
 		CompleteTransaction(context.Context, types.TransactionComplete) error
 		GetByCompanyId(context.Context, int64, types.Pagination) ([]map[string]interface{}, error)
-		GetInfos(ctx context.Context, date string) ([]store.CompanyAmount, error)
+		GetInfos(ctx context.Context, date string, scopeCompanyID *int64) ([]store.CompanyAmount, error)
 		Archived(context.Context, types.Pagination) ([]map[string]interface{}, error)
 		Update(context.Context, *store.Transaction) error
 		Delete(context.Context, *int64) error
@@ -78,7 +78,9 @@ type Service struct {
 
 	ServiceFees interface {
 		ListFees(context.Context, int64, string, int64, types.Pagination) ([]store.TransactionServiceFee, error)
+		ListFeesAll(context.Context, string, int64, types.Pagination) ([]store.TransactionServiceFee, error)
 		ListSettlements(context.Context, int64, string, types.Pagination) ([]store.ServiceFeeSettlement, error)
+		ListSettlementsAll(context.Context, string, types.Pagination) ([]store.ServiceFeeSettlement, error)
 		Settle(context.Context, int64, int64, int64, string, string) (*store.ServiceFeeSettlement, error)
 	}
 }

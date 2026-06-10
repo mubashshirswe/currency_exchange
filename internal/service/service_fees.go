@@ -126,6 +126,15 @@ func (s *ServiceFeeService) ListFees(
 	return s.store.TransactionServiceFees.ListByCompany(ctx, companyID, currency, status, pagination)
 }
 
+func (s *ServiceFeeService) ListFeesAll(
+	ctx context.Context,
+	currency string,
+	status int64,
+	pagination types.Pagination,
+) ([]store.TransactionServiceFee, error) {
+	return s.store.TransactionServiceFees.ListAll(ctx, currency, status, pagination)
+}
+
 func (s *ServiceFeeService) ListSettlements(
 	ctx context.Context,
 	companyID int64,
@@ -133,6 +142,14 @@ func (s *ServiceFeeService) ListSettlements(
 	pagination types.Pagination,
 ) ([]store.ServiceFeeSettlement, error) {
 	return s.store.ServiceFeeSettlements.ListByCompany(ctx, companyID, currency, pagination)
+}
+
+func (s *ServiceFeeService) ListSettlementsAll(
+	ctx context.Context,
+	currency string,
+	pagination types.Pagination,
+) ([]store.ServiceFeeSettlement, error) {
+	return s.store.ServiceFeeSettlements.ListAll(ctx, currency, pagination)
 }
 
 // Settle — xizmat pulini 0 qilish (yakunlash). Har bir amal alohida yozuv.
@@ -154,7 +171,7 @@ func (s *ServiceFeeService) Settle(
 	settlementStorage := store.NewServiceFeeSettlementStorage(tx)
 	itemStorage := store.NewServiceFeeSettlementItemStorage(tx)
 
-	// amount <= 0 — barcha status=1 yozuvlarni to'liq yakunlash (barcha kompaniyalar).
+	// amount <= 0 — joriy kompaniyaning barcha taqsimlanmagan yozuvlarini yakunlash.
 	if amount <= 0 {
 		st, err := s.settleAllPending(
 			ctx, feeStorage, settlementStorage, itemStorage,
@@ -233,7 +250,7 @@ func (s *ServiceFeeService) settleAllPending(
 	companyID, userID int64,
 	currency, details string,
 ) (*store.ServiceFeeSettlement, error) {
-	pending, err := feeStorage.ListAllPending(ctx, currency)
+	pending, err := feeStorage.ListPendingFIFO(ctx, companyID, currency)
 	if err != nil {
 		return nil, err
 	}

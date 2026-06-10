@@ -193,6 +193,30 @@ func (s *UserSessionStorage) Delete(ctx context.Context, id, userID int64) error
 	return nil
 }
 
+// FCMTokensByCompanyID returns distinct non-empty FCM tokens for all users in a company.
+func (s *UserSessionStorage) FCMTokensByCompanyID(ctx context.Context, companyID int64) ([]string, error) {
+	q := `
+		SELECT DISTINCT us.fcm_token
+		FROM user_sessions us
+		INNER JOIN users u ON u.id = us.user_id
+		WHERE u.company_id = $1 AND us.fcm_token <> ''`
+	rows, err := s.db.QueryContext(ctx, q, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tokens []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, t)
+	}
+	return tokens, rows.Err()
+}
+
 // FCMTokensByUserID returns distinct non-empty tokens for push (all user devices).
 func (s *UserSessionStorage) FCMTokensByUserID(ctx context.Context, userID int64) ([]string, error) {
 	q := `SELECT DISTINCT fcm_token FROM user_sessions WHERE user_id = $1 AND fcm_token <> ''`

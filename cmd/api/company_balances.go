@@ -42,12 +42,20 @@ func (app *application) GetCompanyBalanceRecordsHandler(w http.ResponseWriter, r
 
 // currentCompanyID — JWT'dagi foydalanuvchining kompaniya id'sini qaytaradi.
 func (app *application) currentCompanyID(r *http.Request) (int64, error) {
-	userID, _ := r.Context().Value(UserKey).(int64)
-	user, err := app.store.Users.GetById(r.Context(), &userID)
+	user, err := app.currentUser(r)
 	if err != nil {
 		return 0, err
 	}
 	return user.CompanyId, nil
+}
+
+func (app *application) currentUser(r *http.Request) (*store.User, error) {
+	userID, _ := r.Context().Value(UserKey).(int64)
+	return app.store.Users.GetById(r.Context(), &userID)
+}
+
+func (app *application) isAdminUser(user *store.User) bool {
+	return user != nil && user.Role == 1
 }
 
 // GetMyCompanyBalancesHandler — joriy foydalanuvchi kompaniyasining balansi (valyutalar bo'yicha).

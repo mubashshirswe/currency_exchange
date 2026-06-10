@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/mubashshir3767/currencyExchange/internal/store"
 )
 
 type ServiceFeeSettlePayload struct {
@@ -13,6 +15,12 @@ type ServiceFeeSettlePayload struct {
 }
 
 func (app *application) GetTransactionServiceFeesHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := app.currentUser(r)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
 	companyID, err := app.currentCompanyID(r)
 	if err != nil {
 		app.internalServerError(w, r, err)
@@ -28,9 +36,16 @@ func (app *application) GetTransactionServiceFeesHandler(w http.ResponseWriter, 
 	}
 
 	pagination := app.paginationFromRequest(r, r.Context())
-	fees, err := app.service.ServiceFees.ListFees(
-		r.Context(), companyID, currency, status, pagination,
-	)
+	var fees []store.TransactionServiceFee
+	if app.isAdminUser(user) {
+		fees, err = app.service.ServiceFees.ListFeesAll(
+			r.Context(), currency, status, pagination,
+		)
+	} else {
+		fees, err = app.service.ServiceFees.ListFees(
+			r.Context(), companyID, currency, status, pagination,
+		)
+	}
 	if err != nil {
 		if isMissingDBRelation(err) {
 			fees = nil
@@ -45,6 +60,12 @@ func (app *application) GetTransactionServiceFeesHandler(w http.ResponseWriter, 
 }
 
 func (app *application) GetServiceFeeSettlementsHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := app.currentUser(r)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
 	companyID, err := app.currentCompanyID(r)
 	if err != nil {
 		app.internalServerError(w, r, err)
@@ -54,9 +75,16 @@ func (app *application) GetServiceFeeSettlementsHandler(w http.ResponseWriter, r
 	currency := strings.TrimSpace(r.URL.Query().Get("currency"))
 	pagination := app.paginationFromRequest(r, r.Context())
 
-	rows, err := app.service.ServiceFees.ListSettlements(
-		r.Context(), companyID, currency, pagination,
-	)
+	var rows []store.ServiceFeeSettlement
+	if app.isAdminUser(user) {
+		rows, err = app.service.ServiceFees.ListSettlementsAll(
+			r.Context(), currency, pagination,
+		)
+	} else {
+		rows, err = app.service.ServiceFees.ListSettlements(
+			r.Context(), companyID, currency, pagination,
+		)
+	}
 	if err != nil {
 		if isMissingDBRelation(err) {
 			rows = nil

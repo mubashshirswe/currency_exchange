@@ -61,6 +61,26 @@ func (s *TransactionStorage) Archive(ctx context.Context, companyId int64) error
 	return nil
 }
 
+func (s *TransactionStorage) allocateNumber(ctx context.Context, companyID int64) (int64, error) {
+	if companyID == 0 {
+		return 0, fmt.Errorf("received_company_id is required for transaction number")
+	}
+
+	var number int64
+	err := s.db.QueryRowContext(ctx, `
+		INSERT INTO transaction_company_counters (company_id, last_number)
+		VALUES ($1, 1)
+		ON CONFLICT (company_id) DO UPDATE
+			SET last_number = transaction_company_counters.last_number + 1
+		RETURNING last_number
+	`, companyID).Scan(&number)
+	if err != nil {
+		return 0, err
+	}
+
+	return number, nil
+}
+
 func (s *TransactionStorage) Create(ctx context.Context, tr *Transaction) error {
 	receivedIncomesJSON, err := json.Marshal(tr.ReceivedIncomes)
 	if err != nil {
@@ -72,18 +92,25 @@ func (s *TransactionStorage) Create(ctx context.Context, tr *Transaction) error 
 		return err
 	}
 
+	number, err := s.allocateNumber(ctx, tr.ReceivedCompanyId)
+	if err != nil {
+		return err
+	}
+	tr.Number = number
+
 	loc, _ := time.LoadLocation("Asia/Tashkent")
 	nowUz := time.Now().In(loc)
 
 	query := `
 			INSERT INTO transactions(
-				service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
+				number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
 	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at) 
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id, created_at`
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id, created_at`
 
 	err = s.db.QueryRowContext(
 		ctx,
 		query,
+		tr.Number,
 		tr.ServiceFeeAmount,
 		tr.ServiceFeeCurrency,
 		tr.ServiceFeeDetails,

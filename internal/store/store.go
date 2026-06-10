@@ -139,12 +139,14 @@ type Storage struct {
 		ListPendingFIFO(context.Context, int64, string) ([]TransactionServiceFee, error)
 		ListAllPending(context.Context, string) ([]TransactionServiceFee, error)
 		ListByCompany(context.Context, int64, string, int64, types.Pagination) ([]TransactionServiceFee, error)
+		ListAll(context.Context, string, int64, types.Pagination) ([]TransactionServiceFee, error)
 		GetRemainingByCompanies(context.Context, []int64) ([]ServiceFeeRemainingRow, error)
 	}
 
 	ServiceFeeSettlements interface {
 		Create(context.Context, *ServiceFeeSettlement) error
 		ListByCompany(context.Context, int64, string, types.Pagination) ([]ServiceFeeSettlement, error)
+		ListAll(context.Context, string, types.Pagination) ([]ServiceFeeSettlement, error)
 	}
 
 	ServiceFeeSettlementItems interface {
@@ -166,6 +168,7 @@ type Storage struct {
 		UpdateFCM(context.Context, int64, int64, string, *string) error
 		Delete(context.Context, int64, int64) error
 		FCMTokensByUserID(context.Context, int64) ([]string, error)
+		FCMTokensByCompanyID(context.Context, int64) ([]string, error)
 		DeleteByFCMToken(context.Context, string) error
 	}
 }

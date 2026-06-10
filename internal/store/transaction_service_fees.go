@@ -24,18 +24,20 @@ type TransactionServiceFee struct {
 	Status           int64  `json:"status"`
 	TransactionPhone string `json:"transaction_phone,omitempty"`
 	TransactionNo    int64  `json:"transaction_number,omitempty"`
+	CompanyName      string `json:"company_name,omitempty"`
 	CreatedAt        string `json:"created_at"`
 }
 
 type ServiceFeeSettlement struct {
-	ID        int64  `json:"id"`
-	CompanyID int64  `json:"company_id"`
-	UserID    int64  `json:"user_id"`
-	Amount    int64  `json:"amount"`
-	Currency  string `json:"currency"`
-	Details   string `json:"details"`
-	Username  string `json:"username,omitempty"`
-	CreatedAt string `json:"created_at"`
+	ID          int64  `json:"id"`
+	CompanyID   int64  `json:"company_id"`
+	UserID      int64  `json:"user_id"`
+	Amount      int64  `json:"amount"`
+	Currency    string `json:"currency"`
+	Details     string `json:"details"`
+	Username    string `json:"username,omitempty"`
+	CompanyName string `json:"company_name,omitempty"`
+	CreatedAt   string `json:"created_at"`
 }
 
 type ServiceFeeRemainingRow struct {
@@ -200,6 +202,65 @@ func (s *TransactionServiceFeeStorage) ListByCompany(
 	return out, rows.Err()
 }
 
+func (s *TransactionServiceFeeStorage) ListAll(
+	ctx context.Context,
+	currency string,
+	status int64,
+	pagination types.Pagination,
+) ([]TransactionServiceFee, error) {
+	query := `
+		SELECT f.id, f.transaction_id, f.company_id, f.amount,
+		       f.currency, COALESCE(f.details, ''), f.status, f.created_at,
+		       COALESCE(t.phone, ''),
+		       COALESCE(NULLIF(trim(t.number::text), '')::bigint, 0),
+		       COALESCE(c.name, '')
+		FROM transaction_service_fees f
+		LEFT JOIN transactions t ON t.id = f.transaction_id
+		LEFT JOIN companies c ON c.id = f.company_id
+		WHERE 1=1`
+	args := []any{}
+	argN := 1
+	if currency != "" {
+		query += fmt.Sprintf(" AND f.currency = $%d", argN)
+		args = append(args, currency)
+		argN++
+	}
+	if status > 0 {
+		query += fmt.Sprintf(" AND f.status = $%d", argN)
+		args = append(args, status)
+		argN++
+	}
+	query += " ORDER BY f.created_at DESC"
+	query += fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+	out := []TransactionServiceFee{}
+	for rows.Next() {
+		var f TransactionServiceFee
+		var createdAt time.Time
+		if err := rows.Scan(
+			&f.ID, &f.TransactionID, &f.CompanyID, &f.Amount,
+			&f.Currency, &f.Details, &f.Status, &createdAt,
+			&f.TransactionPhone, &f.TransactionNo, &f.CompanyName,
+		); err != nil {
+			return nil, err
+		}
+		if loc != nil {
+			f.CreatedAt = createdAt.In(loc).Format("2006-01-02 15:04:05")
+		} else {
+			f.CreatedAt = createdAt.Format("2006-01-02 15:04:05")
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
 func (s *TransactionServiceFeeStorage) GetRemainingByCompanies(
 	ctx context.Context, companyIDs []int64,
 ) ([]ServiceFeeRemainingRow, error) {
@@ -280,6 +341,53 @@ func (s *ServiceFeeSettlementStorage) ListByCompany(
 		if err := rows.Scan(
 			&st.ID, &st.CompanyID, &st.UserID, &st.Amount, &st.Currency,
 			&st.Details, &st.Username, &createdAt,
+		); err != nil {
+			return nil, err
+		}
+		if loc != nil {
+			st.CreatedAt = createdAt.In(loc).Format("2006-01-02 15:04:05")
+		} else {
+			st.CreatedAt = createdAt.Format("2006-01-02 15:04:05")
+		}
+		out = append(out, st)
+	}
+	return out, rows.Err()
+}
+
+func (s *ServiceFeeSettlementStorage) ListAll(
+	ctx context.Context,
+	currency string,
+	pagination types.Pagination,
+) ([]ServiceFeeSettlement, error) {
+	query := `
+		SELECT s.id, s.company_id, s.user_id, s.amount, s.currency,
+		       COALESCE(s.details, ''), COALESCE(u.username, ''), COALESCE(c.name, ''), s.created_at
+		FROM service_fee_settlements s
+		LEFT JOIN users u ON u.id = s.user_id
+		LEFT JOIN companies c ON c.id = s.company_id
+		WHERE 1=1`
+	args := []any{}
+	if currency != "" {
+		query += " AND s.currency = $1"
+		args = append(args, currency)
+	}
+	query += " ORDER BY s.created_at DESC"
+	query += fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+	out := []ServiceFeeSettlement{}
+	for rows.Next() {
+		var st ServiceFeeSettlement
+		var createdAt time.Time
+		if err := rows.Scan(
+			&st.ID, &st.CompanyID, &st.UserID, &st.Amount, &st.Currency,
+			&st.Details, &st.Username, &st.CompanyName, &createdAt,
 		); err != nil {
 			return nil, err
 		}
