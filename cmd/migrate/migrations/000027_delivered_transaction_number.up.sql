@@ -33,24 +33,8 @@ ALTER TABLE transactions
     ADD CONSTRAINT transactions_delivered_company_number_unique
         UNIQUE (delivered_company_id, delivered_number);
 
--- 000025 o'tkazilmagan yoki force qilingan DB'larda jadval bo'lmasligi mumkin.
-CREATE TABLE IF NOT EXISTS transaction_company_counters (
-    company_id bigint PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,
-    last_number bigint NOT NULL DEFAULT 0
-);
-
-INSERT INTO transaction_company_counters (company_id, last_number)
-SELECT
-    delivered_company_id,
-    COALESCE(MAX(delivered_number::bigint), 0)::bigint
-FROM transactions
-WHERE delivered_company_id IS NOT NULL
-GROUP BY delivered_company_id
-ON CONFLICT (company_id) DO UPDATE
-    SET last_number = GREATEST(
-        transaction_company_counters.last_number,
-        EXCLUDED.last_number
-    );
+-- delivered_number counterlari 000028 migrationida alohida jadvalga yoziladi.
+-- transaction_company_counters (number/received) faqat 000025 da to'ldiriladi.
 
 CREATE INDEX IF NOT EXISTS idx_transactions_delivered_number
     ON transactions (delivered_company_id, delivered_number);
