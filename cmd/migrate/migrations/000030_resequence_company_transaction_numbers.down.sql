@@ -1,0 +1,1 @@
+-- Raqamlarni avvalgi holatga qaytarib bo'lmaydi; no-op.

@@ -155,7 +155,13 @@ func (s *TransactionServiceFeeStorage) ListByCompany(
 		SELECT f.id, f.transaction_id, f.company_id, f.amount,
 		       f.currency, COALESCE(f.details, ''), f.status, f.created_at,
 		       COALESCE(t.phone, ''),
-		       COALESCE(NULLIF(trim(t.number::text), '')::bigint, 0)
+		       CASE
+		           WHEN f.company_id = t.received_company_id
+		               THEN COALESCE(NULLIF(trim(t.number::text), '')::bigint, 0)
+		           WHEN f.company_id = t.delivered_company_id
+		               THEN COALESCE(NULLIF(trim(t.delivered_number::text), '')::bigint, 0)
+		           ELSE COALESCE(NULLIF(trim(t.number::text), '')::bigint, 0)
+		       END
 		FROM transaction_service_fees f
 		LEFT JOIN transactions t ON t.id = f.transaction_id
 		WHERE f.company_id = $1`
@@ -212,7 +218,13 @@ func (s *TransactionServiceFeeStorage) ListAll(
 		SELECT f.id, f.transaction_id, f.company_id, f.amount,
 		       f.currency, COALESCE(f.details, ''), f.status, f.created_at,
 		       COALESCE(t.phone, ''),
-		       COALESCE(NULLIF(trim(t.number::text), '')::bigint, 0),
+		       CASE
+		           WHEN f.company_id = t.received_company_id
+		               THEN COALESCE(NULLIF(trim(t.number::text), '')::bigint, 0)
+		           WHEN f.company_id = t.delivered_company_id
+		               THEN COALESCE(NULLIF(trim(t.delivered_number::text), '')::bigint, 0)
+		           ELSE COALESCE(NULLIF(trim(t.number::text), '')::bigint, 0)
+		       END,
 		       COALESCE(c.name, '')
 		FROM transaction_service_fees f
 		LEFT JOIN transactions t ON t.id = f.transaction_id

@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/mubashshir3767/currencyExchange/internal/notify"
 	"github.com/mubashshir3767/currencyExchange/internal/store"
@@ -39,6 +41,48 @@ func transactionServiceFeeCompanyID(tr *store.Transaction, actingCompanyID int64
 		return tr.ReceivedCompanyId
 	}
 	return actingCompanyID
+}
+
+// resolveCompleteServiceFee — yakunlashda yuborilgan xizmat haqini aniqlaydi.
+func resolveCompleteServiceFee(complete types.TransactionComplete) int64 {
+	if complete.ServiceFeeAmount > 0 {
+		return complete.ServiceFeeAmount
+	}
+
+	switch v := complete.RecievedServiceFee.(type) {
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return 0
+		}
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return n
+		}
+		var digits strings.Builder
+		for _, r := range s {
+			if unicode.IsDigit(r) {
+				digits.WriteRune(r)
+			} else if digits.Len() > 0 {
+				break
+			}
+		}
+		if digits.Len() == 0 {
+			return 0
+		}
+		n, err := strconv.ParseInt(digits.String(), 10, 64)
+		if err != nil {
+			return 0
+		}
+		return n
+	case float64:
+		return int64(v)
+	case int:
+		return int64(v)
+	case int64:
+		return v
+	default:
+		return 0
+	}
 }
 
 // applyCompanyOp — bitta kirim/chiqimni company_balances'ga qo'llaydi va
@@ -444,6 +488,11 @@ func (s *CompanyOpsService) CompleteTransactionV2(ctx context.Context, complete 
 		return fmt.Errorf("ERROR OCCURRED WHILE transactionsStorage.GetById %v", err)
 	}
 
+	feeAtComplete := resolveCompleteServiceFee(complete)
+	if tran.ServiceFeeAmount <= 0 && feeAtComplete <= 0 {
+		return fmt.Errorf(types.SERVICE_FEE_REQUIRED_AT_COMPLETE)
+	}
+
 	link := opLink{TransactionId: &tran.ID}
 	for _, tr := range tran.DeliveredOutcomes {
 		var recordType int64
@@ -458,8 +507,8 @@ func (s *CompanyOpsService) CompleteTransactionV2(ctx context.Context, complete 
 		}
 	}
 
-	if complete.ServiceFeeAmount > 0 {
-		tran.ServiceFeeAmount = complete.ServiceFeeAmount
+	if tran.ServiceFeeAmount <= 0 && feeAtComplete > 0 {
+		tran.ServiceFeeAmount = feeAtComplete
 		tran.ServiceFeeCurrency = "SUM"
 		tran.ServiceFeeDetails = complete.ServiceFeeDetails
 	}

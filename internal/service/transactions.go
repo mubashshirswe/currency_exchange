@@ -129,6 +129,12 @@ func (s *TransactionService) CompleteTransaction(ctx context.Context, transactio
 		return fmt.Errorf("ERROR OCCURRED WHILE transactionsStorage.GetById %v", err)
 	}
 
+	feeAtComplete := resolveCompleteServiceFee(transaction)
+	if tran.ServiceFeeAmount <= 0 && feeAtComplete <= 0 {
+		tx.Rollback()
+		return fmt.Errorf(types.SERVICE_FEE_REQUIRED_AT_COMPLETE)
+	}
+
 	for _, tr := range tran.DeliveredOutcomes {
 		balance, err := balancesStorage.GetByUserIdAndCurrency(ctx, &transaction.DeliveredUserId, tr.DeliveredCurrency)
 		if err != nil {
@@ -181,8 +187,8 @@ func (s *TransactionService) CompleteTransaction(ctx context.Context, transactio
 
 	// Agar tranzaksiya yaratilganda xizmat puli kiritilmagan bo'lsa,
 	// yakunlash bosqichida kiritilgan summa + valyuta + izoh saqlanadi.
-	if transaction.ServiceFeeAmount > 0 {
-		tran.ServiceFeeAmount = transaction.ServiceFeeAmount
+	if tran.ServiceFeeAmount <= 0 && feeAtComplete > 0 {
+		tran.ServiceFeeAmount = feeAtComplete
 		tran.ServiceFeeCurrency = "SUM"
 		tran.ServiceFeeDetails = transaction.ServiceFeeDetails
 	}
@@ -465,6 +471,7 @@ func (s *TransactionService) GetByCompanyId(ctx context.Context, companyId int64
 				"id":                   tran.ID,
 				"number":               tran.Number,
 				"delivered_number":     tran.DeliveredNumber,
+				"has_service_fee":      tran.ServiceFeeAmount > 0,
 				"service_fee":          formatServiceFee(tran.ServiceFeeAmount, tran.ServiceFeeCurrency, tran.ServiceFeeDetails),
 				"service_fee_amount":   tran.ServiceFeeAmount,
 				"service_fee_currency": tran.ServiceFeeCurrency,
@@ -553,6 +560,7 @@ func (s *TransactionService) GetByField(ctx context.Context, search *string, fie
 			"delivered_company":    deliveredCompanyName,
 			"delivered_user":       deliveryUser,
 			"delivered_user_id":    tran.DeliveredUserId,
+			"has_service_fee":      tran.ServiceFeeAmount > 0,
 			"service_fee":          formatServiceFee(tran.ServiceFeeAmount, tran.ServiceFeeCurrency, tran.ServiceFeeDetails),
 			"service_fee_amount":   tran.ServiceFeeAmount,
 			"service_fee_currency": tran.ServiceFeeCurrency,
@@ -625,6 +633,7 @@ func (s *TransactionService) Archived(ctx context.Context, pagination types.Pagi
 			"delivered_company":    deliveredCompanyName,
 			"delivered_user":       DeliveredUser,
 			"delivered_user_id":    tran.DeliveredUserId,
+			"has_service_fee":      tran.ServiceFeeAmount > 0,
 			"service_fee":          formatServiceFee(tran.ServiceFeeAmount, tran.ServiceFeeCurrency, tran.ServiceFeeDetails),
 			"service_fee_amount":   tran.ServiceFeeAmount,
 			"service_fee_currency": tran.ServiceFeeCurrency,
