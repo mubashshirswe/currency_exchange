@@ -1,6 +1,50 @@
 -- Har bir kompaniya uchun transaction raqamlarini 1, 2, 3... dan qayta tiklash.
 -- Eski global id yoki noto'g'ri raqamlarga bog'liq emas.
 
+-- Production'da number ustuni hali varchar bo'lishi mumkin (000025 to'liq qo'llanmagan).
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'transactions'
+          AND column_name = 'number'
+          AND data_type IN ('text', 'character varying')
+    ) THEN
+        ALTER TABLE transactions
+            ALTER COLUMN number TYPE bigint
+            USING NULLIF(trim(number::text), '')::bigint;
+    ELSIF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'transactions'
+          AND column_name = 'number'
+    ) THEN
+        ALTER TABLE transactions ADD COLUMN number bigint;
+    END IF;
+END $$;
+
+ALTER TABLE transactions
+    ADD COLUMN IF NOT EXISTS delivered_number bigint;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'transactions'
+          AND column_name = 'delivered_number'
+          AND data_type IN ('text', 'character varying')
+    ) THEN
+        ALTER TABLE transactions
+            ALTER COLUMN delivered_number TYPE bigint
+            USING NULLIF(trim(delivered_number::text), '')::bigint;
+    END IF;
+END $$;
+
 ALTER TABLE transactions
     DROP CONSTRAINT IF EXISTS transactions_received_company_number_unique;
 
