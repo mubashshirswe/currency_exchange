@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mubashshir3767/currencyExchange/internal/notify"
@@ -190,7 +191,9 @@ func (s *TransactionService) CompleteTransaction(ctx context.Context, transactio
 	if tran.ServiceFeeAmount <= 0 && feeAtComplete > 0 {
 		tran.ServiceFeeAmount = feeAtComplete
 		tran.ServiceFeeCurrency = "SUM"
-		tran.ServiceFeeDetails = transaction.ServiceFeeDetails
+	}
+	if details := strings.TrimSpace(transaction.ServiceFeeDetails); details != "" {
+		tran.ServiceFeeDetails = details
 	}
 
 	if err := transactionsStorage.Update(ctx, tran); err != nil {

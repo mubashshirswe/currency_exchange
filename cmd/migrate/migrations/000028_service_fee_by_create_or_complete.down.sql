@@ -1,0 +1,1 @@
+-- Data-only migration; no schema rollback.

@@ -35,10 +35,42 @@ type opLink struct {
 	DebtId        *int64
 }
 
-// transactionServiceFeeCompanyID — xizmat haqi tranzaksiyani yaratgan kompaniyaga bog'lanadi.
-func transactionServiceFeeCompanyID(tr *store.Transaction, actingCompanyID int64) int64 {
+// serviceFeeCompanyForUpdate — mavjud yozuv kompaniyasini saqlaydi; yangi yozuv uchun holatga qarab aniqlaydi.
+func serviceFeeCompanyForUpdate(
+	ctx context.Context,
+	tx store.DBTX,
+	tr *store.Transaction,
+	actingCompanyID int64,
+) (int64, error) {
+	feeStorage := store.NewTransactionServiceFeeStorage(tx)
+	existing, err := feeStorage.GetByTransactionID(ctx, tr.ID)
+	if err == nil {
+		return existing.CompanyID, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, err
+	}
+	if tr.DeliveredUserId != nil {
+		return serviceFeeCompanyAtComplete(tr, actingCompanyID, false), nil
+	}
+	return serviceFeeCompanyAtCreate(tr, actingCompanyID), nil
+}
+
+func serviceFeeCompanyAtCreate(tr *store.Transaction, actingCompanyID int64) int64 {
 	if tr.ReceivedCompanyId != 0 {
 		return tr.ReceivedCompanyId
+	}
+	return actingCompanyID
+}
+
+// serviceFeeCompanyAtComplete — yakunlashda kiritilgan xizmat haqi yetkazib beruvchi kompaniyaga yoziladi;
+// yaratishda kiritilgan bo'lsa, qabul qiluvchi kompaniyada qoladi.
+func serviceFeeCompanyAtComplete(tr *store.Transaction, actingCompanyID int64, hadFeeAtCreate bool) int64 {
+	if hadFeeAtCreate {
+		return serviceFeeCompanyAtCreate(tr, actingCompanyID)
+	}
+	if tr.DeliveredCompanyId != 0 {
+		return tr.DeliveredCompanyId
 	}
 	return actingCompanyID
 }
@@ -432,7 +464,7 @@ func (s *CompanyOpsService) PerformTransactionV2(ctx context.Context, transactio
 	}
 
 	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(
-		ctx, tx, transaction, transactionServiceFeeCompanyID(transaction, companyID),
+		ctx, tx, transaction, serviceFeeCompanyAtCreate(transaction, companyID),
 	); err != nil {
 		return fmt.Errorf("service fee sync on create: %w", err)
 	}
@@ -492,6 +524,7 @@ func (s *CompanyOpsService) CompleteTransactionV2(ctx context.Context, complete 
 	if tran.ServiceFeeAmount <= 0 && feeAtComplete <= 0 {
 		return fmt.Errorf(types.SERVICE_FEE_REQUIRED_AT_COMPLETE)
 	}
+	hadFeeAtCreate := tran.ServiceFeeAmount > 0
 
 	link := opLink{TransactionId: &tran.ID}
 	for _, tr := range tran.DeliveredOutcomes {
@@ -510,7 +543,9 @@ func (s *CompanyOpsService) CompleteTransactionV2(ctx context.Context, complete 
 	if tran.ServiceFeeAmount <= 0 && feeAtComplete > 0 {
 		tran.ServiceFeeAmount = feeAtComplete
 		tran.ServiceFeeCurrency = "SUM"
-		tran.ServiceFeeDetails = complete.ServiceFeeDetails
+	}
+	if details := strings.TrimSpace(complete.ServiceFeeDetails); details != "" {
+		tran.ServiceFeeDetails = details
 	}
 
 	tran.Status = TRANSACTION_STATUS_COMPLETED
@@ -520,7 +555,7 @@ func (s *CompanyOpsService) CompleteTransactionV2(ctx context.Context, complete 
 	}
 
 	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(
-		ctx, tx, tran, transactionServiceFeeCompanyID(tran, companyID),
+		ctx, tx, tran, serviceFeeCompanyAtComplete(tran, companyID, hadFeeAtCreate),
 	); err != nil {
 		return fmt.Errorf("service fee sync on complete: %w", err)
 	}
@@ -596,8 +631,12 @@ func (s *CompanyOpsService) UpdateTransactionV2(ctx context.Context, transaction
 		}
 	}
 
+	feeCompanyID, err := serviceFeeCompanyForUpdate(ctx, tx, transaction, companyID)
+	if err != nil {
+		return fmt.Errorf("service fee company on update: %w", err)
+	}
 	if err := NewServiceFeeService(s.store).SyncFromTransactionTx(
-		ctx, tx, transaction, transactionServiceFeeCompanyID(transaction, companyID),
+		ctx, tx, transaction, feeCompanyID,
 	); err != nil {
 		return fmt.Errorf("service fee sync on update: %w", err)
 	}

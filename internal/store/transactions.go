@@ -563,26 +563,15 @@ select
         end
     ),0) as remain,
 
-    -- Kunlik xizmat haqi (yakunlangan -> delivered, kutilayotgan -> received)
+    -- Kunlik xizmat haqi (transaction_service_fees.company_id bo'yicha)
     coalesce((
-        select sum(
-            case
-                when t.delivered_user_id is not null and t.delivered_company_id = a.company_id
-                    then t.service_fee_amount
-                when t.delivered_user_id is null and t.received_company_id = a.company_id
-                    then t.service_fee_amount
-                else 0
-            end
-        )::float
-        from transactions t
-        where t.service_fee_amount > 0
+        select sum(tsf.amount)::float
+        from transaction_service_fees tsf
+        join transactions t on t.id = tsf.transaction_id
+        where tsf.company_id = a.company_id
+          and upper(tsf.currency) = upper(a.currency)
           and t.status != 3
-          and upper(coalesce(nullif(trim(t.service_fee_currency), ''), 'SUM')) = upper(a.currency)
           and (t.created_at AT TIME ZONE 'Asia/Tashkent')::date = $2::date
-          and (
-              t.delivered_company_id = ANY($1)
-              or t.received_company_id = ANY($1)
-          )
     ), 0) as service_fee_amount
 
 from all_outcomes a
