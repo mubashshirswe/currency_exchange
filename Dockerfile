@@ -38,7 +38,7 @@ ENV APP_ENV=production \
 # Set the Current Working Directory inside the container
 WORKDIR /app
 
-# Copy the prebuilt binary, migrate CLI, and SQL migrations
+# Copy the prebuilt binary, migrate CLI, and SQL migrations (cmd/migrate/migrations)
 COPY --from=builder /app/currency_exchange .
 COPY --from=builder /go/bin/migrate /usr/local/bin/migrate
 COPY --from=builder /app/cmd/migrate/migrations /migrations

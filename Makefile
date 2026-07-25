@@ -1,10 +1,10 @@
 # .env ni include qilmaymiz — Make sintaksisini buzadi (URL, ssh qatorlari va h.k.)
 MIGRATIONS_PATH = ./cmd/migrate/migrations
 
-# --- DB: eski server (47.236.63.18) -> Mac -> yangi server (mubashshir) ---
-OLD_HOST        ?= root@47.236.63.18
-OLD_PATH        ?= /root/CurrencyExchange/deploy/server
-NEW_HOST        ?= swe
+# --- DB: eski server (swe) -> Mac -> yangi server (169.58.11.19) ---
+OLD_HOST        ?= swe
+OLD_PATH        ?= /app/backend/currency-exchange
+NEW_HOST        ?= root@169.58.11.19
 NEW_PATH        ?= /app/backend/currency-exchange
 LOCAL_BACKUPS   ?= ./backups
 
@@ -45,11 +45,14 @@ db-help:
 db-backup:
 	@mkdir -p "$(LOCAL_BACKUPS)"
 	@echo ">> Backup: $(OLD_HOST):$(OLD_PATH)"
-	ssh "$(OLD_HOST)" 'cd "$(OLD_PATH)" && ./scripts/backup-db.sh'
+	ssh "$(OLD_HOST)" 'sudo bash -lc "cd \"$(OLD_PATH)\" && ./scripts/backup-db.sh"'
 	@echo ">> Mac'ga yuklanmoqda..."
-	@REMOTE=$$(ssh "$(OLD_HOST)" 'ls -t "$(OLD_PATH)"/backups/db-*.sql.gz 2>/dev/null | head -1'); \
+	@REMOTE=$$(ssh "$(OLD_HOST)" 'sudo ls -t "$(OLD_PATH)"/backups/db-*.sql.gz 2>/dev/null | head -1'); \
 	test -n "$$REMOTE" || { echo "Xato: serverda dump topilmadi"; exit 1; }; \
-	scp "$(OLD_HOST):$$REMOTE" "$(LOCAL_BACKUPS)/"; \
+	F=$$(basename "$$REMOTE"); \
+	ssh "$(OLD_HOST)" "sudo cp '$$REMOTE' /tmp/$$F && sudo chmod 644 /tmp/$$F"; \
+	scp "$(OLD_HOST):/tmp/$$F" "$(LOCAL_BACKUPS)/"; \
+	ssh "$(OLD_HOST)" "rm -f /tmp/$$F"; \
 	ls -lh "$(LOCAL_BACKUPS)/"
 
 db-sync-scripts:

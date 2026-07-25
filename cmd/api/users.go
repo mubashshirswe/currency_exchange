@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/mubashshir3767/currencyExchange/internal/env"
 	"github.com/mubashshir3767/currencyExchange/internal/store"
 )
 
@@ -20,6 +19,10 @@ type UserPayload struct {
 type LoginUserPayload struct {
 	Phone    string `json:"phone"`
 	Password string `json:"password"`
+}
+
+type RefreshTokenPayload struct {
+	RefreshToken string `json:"refresh_token"`
 }
 
 func (app *application) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -99,15 +102,57 @@ func (app *application) LoginUserHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	token, err := JWTCreate([]byte(env.GetString("JWTSECRET", "secret")), int(user.ID), "userID")
+	app.respondWithTokens(w, r, user)
+}
+
+// RefreshTokenHandler exchanges a valid refresh token for a fresh access token
+// and a rotated refresh token, so an active client never has to log in again
+// while its refresh token is alive.
+func (app *application) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	// The token may arrive in the body or in the Authorization header, so an
+	// absent or unreadable body is not an error by itself.
+	var payload RefreshTokenPayload
+	_ = readJSON(w, r, &payload)
+
+	refreshToken := payload.RefreshToken
+	if refreshToken == "" {
+		refreshToken = GetTokenFromRequest(r)
+	}
+
+	userID, err := userIDFromToken(refreshToken, refreshTokenType)
+	if err != nil {
+		app.unauthorizedErrorResponse(w, r, err)
+		return
+	}
+
+	// Confirm the user still exists before minting new tokens.
+	user, err := app.GetUser(r.Context(), userID)
+	if err != nil {
+		app.unauthorizedErrorResponse(w, r, err)
+		return
+	}
+
+	app.respondWithTokens(w, r, user)
+}
+
+// respondWithTokens issues a token pair for the user and writes the standard
+// authentication payload shared by login and refresh.
+func (app *application) respondWithTokens(w http.ResponseWriter, r *http.Request, user *store.User) {
+	accessToken, refreshToken, err := issueTokenPair(user.ID)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
 	}
 
+	cfg := tokens()
+
 	if err := app.writeResponse(w, http.StatusOK, map[string]any{
-		"token": token,
-		"user":  user,
+		"token":              accessToken,
+		"refresh_token":      refreshToken,
+		"token_type":         "Bearer",
+		"expires_in":         int(cfg.accessTTL.Seconds()),
+		"refresh_expires_in": int(cfg.refreshTTL.Seconds()),
+		"user":               user,
 	}); err != nil {
 		app.internalServerError(w, r, err)
 		return
