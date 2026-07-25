@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
 	"github.com/mubashshir3767/currencyExchange/internal/types"
 )
+
+var nonDigitRe = regexp.MustCompile(`[^0-9]`)
 
 type Transaction struct {
 	ID                 int64                     `json:"id"`
@@ -317,7 +320,12 @@ func (s *TransactionStorage) GetByField(
 	}
 
 	args := []any{fieldValue, STATUS_ARCHIVED}
-	argIndex := 3 // ✅ TO‘G‘RI
+
+	// placeholder qo'shadi va $N qaytaradi
+	ph := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
 
 	query := `
 		SELECT id, number, delivered_number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
@@ -327,35 +335,42 @@ func (s *TransactionStorage) GetByField(
 		WHERE ` + fieldName + ` = $1 AND status != $2
 	`
 
-	if search != nil && *search != "" {
-		query += fmt.Sprintf(`
-			AND (
-				details ILIKE $%d 
-				OR phone ILIKE $%d
-				OR CAST(number AS TEXT) ILIKE $%d
-				OR CAST(delivered_number AS TEXT) ILIKE $%d
-				OR service_fee_details ILIKE $%d
-			)
-		`, argIndex, argIndex+1, argIndex+2, argIndex+3, argIndex+4)
+	if search != nil && strings.TrimSpace(*search) != "" {
+		raw := strings.TrimSpace(*search)
+		like := "%" + raw + "%"
 
-		searchValue := "%" + *search + "%"
-
-		args = append(args, searchValue, searchValue, searchValue, searchValue, searchValue)
-		argIndex += 5
-
-		if num, err := strconv.ParseInt(*search, 10, 64); err == nil {
-			query += fmt.Sprintf(` OR number = $%d OR delivered_number = $%d`, argIndex, argIndex+1)
-			args = append(args, num, num)
-			argIndex += 2
+		conds := []string{
+			"details ILIKE " + ph(like),
+			"service_fee_details ILIKE " + ph(like),
+			"CAST(number AS TEXT) ILIKE " + ph(like),
+			"CAST(delivered_number AS TEXT) ILIKE " + ph(like),
 		}
+
+		// Telefon DB'da formatlangan holda ("90 123 45 67") saqlanadi,
+		// shuning uchun ikki tomonni ham raqamgacha normalize qilamiz.
+		digits := nonDigitRe.ReplaceAllString(raw, "")
+		if digits != "" {
+			digitsLike := "%" + digits + "%"
+			conds = append(conds,
+				"regexp_replace(phone, '[^0-9]', '', 'g') LIKE "+ph(digitsLike),
+				// pul summasi bo'yicha qidirish (olingan / berilgan / xizmat haqi)
+				"EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(received_incomes) = 'array' THEN received_incomes ELSE '[]'::jsonb END) e"+
+					" WHERE (e->>'received_amount') LIKE "+ph(digitsLike)+")",
+				"EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(delivered_outcomes) = 'array' THEN delivered_outcomes ELSE '[]'::jsonb END) e"+
+					" WHERE (e->>'delivered_amount') LIKE "+ph(digitsLike)+")",
+				"CAST(service_fee_amount AS TEXT) LIKE "+ph(digitsLike),
+			)
+		} else {
+			conds = append(conds, "phone ILIKE "+ph(like))
+		}
+
+		query += " AND (" + strings.Join(conds, " OR ") + ")"
 	}
 
 	query += fmt.Sprintf(`
 		ORDER BY created_at DESC
-		OFFSET $%d LIMIT $%d
-	`, argIndex, argIndex+1)
-
-	args = append(args, pagination.Offset, pagination.Limit)
+		OFFSET %s LIMIT %s
+	`, ph(pagination.Offset), ph(pagination.Limit))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	return s.ConvertRowsToObject(rows, err)
