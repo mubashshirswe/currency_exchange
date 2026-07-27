@@ -32,6 +32,18 @@ func (app *application) CreateDebtorsHandler(w http.ResponseWriter, r *http.Requ
 	log.Println("PAYLOAD")
 	log.Println(string(jsonPayload))
 
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+	if payload.UserID == 0 {
+		payload.UserID = t.UserID
+	}
+	if err := app.authorizeUser(r, t, payload.UserID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	debtor := &store.Debts{
 		FullName:        payload.FullName,
 		ReceivedIncomes: payload.ReceivedIncomes,
@@ -65,6 +77,24 @@ func (app *application) CreateDebtorTransactionHandler(w http.ResponseWriter, r 
 	jsonPayload, _ := json.Marshal(payload)
 	log.Println("PAYLOAD: ")
 	log.Println(string(jsonPayload))
+
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+	if payload.UserID == 0 {
+		payload.UserID = t.UserID
+	}
+	if err := app.authorizeUser(r, t, payload.UserID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+	if payload.DebtorID > 0 {
+		if err := app.authorizeResource(r, t, "debtors", payload.DebtorID); err != nil {
+			app.handleScopeError(w, r, err)
+			return
+		}
+	}
 
 	if err := app.service.Debts.Transaction(r.Context(), payload); err != nil {
 		app.internalServerError(w, r, err)
@@ -118,8 +148,17 @@ func (app *application) CreateDebtorTransactionV2Handler(w http.ResponseWriter, 
 		return
 	}
 
-	userID, _ := r.Context().Value(UserKey).(int64)
-	payload.UserID = userID
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+	payload.UserID = t.UserID
+	if payload.DebtorID > 0 {
+		if err := app.authorizeResource(r, t, "debtors", payload.DebtorID); err != nil {
+			app.handleScopeError(w, r, err)
+			return
+		}
+	}
 
 	if err := app.service.CompanyOps.DebtTransactionV2(r.Context(), payload); err != nil {
 		app.internalServerError(w, r, err)
@@ -139,7 +178,16 @@ func (app *application) UpdateDebtsV2Handler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	userID, _ := r.Context().Value(UserKey).(int64)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+	if err := app.authorizeResource(r, t, "debts", getIDFromContext(r)); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	userID := t.UserID
 	debt := &store.Debts{
 		ID:              getIDFromContext(r),
 		FullName:        payload.FullName,
@@ -166,7 +214,16 @@ func (app *application) UpdateDebtsV2Handler(w http.ResponseWriter, r *http.Requ
 
 // DeleteDebtsV2Handler — debt'ni o'chiradi (company balans).
 func (app *application) DeleteDebtsV2Handler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "debts", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
 
 	if err := app.service.CompanyOps.DeleteDebtV2(r.Context(), id); err != nil {
 		app.internalServerError(w, r, err)
@@ -182,6 +239,22 @@ func (app *application) UpdateDebtsHandler(w http.ResponseWriter, r *http.Reques
 	var payload *store.Debts
 	if err := readJSON(w, r, &payload); err != nil {
 		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+	if err := app.authorizeResource(r, t, "debts", getIDFromContext(r)); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+	if payload.UserID == 0 {
+		payload.UserID = t.UserID
+	}
+	if err := app.authorizeUser(r, t, payload.UserID); err != nil {
+		app.handleScopeError(w, r, err)
 		return
 	}
 
@@ -229,7 +302,18 @@ func (app *application) GetDebtorsByCompanyIdHandler(w http.ResponseWriter, r *h
 		dateSearch = &date
 	}
 
-	debtors, err := app.service.Debtors.GetByCompanyId(r.Context(), getIDFromContext(r), textSeach, dateSearch, app.Pagination)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	companyID := getIDFromContext(r)
+	if err := app.authorizeCompany(r, t, companyID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	debtors, err := app.service.Debtors.GetByCompanyId(r.Context(), t.BusinessID, companyID, textSeach, dateSearch, app.Pagination)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -242,7 +326,18 @@ func (app *application) GetDebtorsByCompanyIdHandler(w http.ResponseWriter, r *h
 }
 
 func (app *application) GetDebtorsTotalBalanceInfo(w http.ResponseWriter, r *http.Request) {
-	infos, err := app.store.Debtors.GetByBalanceInfo(r.Context(), getIDFromContext(r))
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	companyID := getIDFromContext(r)
+	if err := app.authorizeCompany(r, t, companyID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	infos, err := app.store.Debtors.GetByBalanceInfo(r.Context(), companyID)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -255,8 +350,19 @@ func (app *application) GetDebtorsTotalBalanceInfo(w http.ResponseWriter, r *htt
 }
 
 func (app *application) GetDebtsByDebtorIdHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	debtorID := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "debtors", debtorID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	app.LoadPaginationInfo(r, r.Context())
-	debtors, err := app.store.Debts.GetByDebtorID(r.Context(), getIDFromContext(r), app.Pagination)
+	debtors, err := app.store.Debts.GetByDebtorID(r.Context(), debtorID, app.Pagination)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -269,7 +375,18 @@ func (app *application) GetDebtsByDebtorIdHandler(w http.ResponseWriter, r *http
 }
 
 func (app *application) GetDebtorsByIdHandler(w http.ResponseWriter, r *http.Request) {
-	debtors, err := app.store.Debtors.GetById(r.Context(), getIDFromContext(r))
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "debtors", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	debtors, err := app.store.Debtors.GetById(r.Context(), id)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -282,7 +399,16 @@ func (app *application) GetDebtorsByIdHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (app *application) DeleteDebtsHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "debts", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
 
 	if err := app.service.Debts.Delete(r.Context(), id); err != nil {
 		app.internalServerError(w, r, err)
@@ -296,7 +422,16 @@ func (app *application) DeleteDebtsHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (app *application) DeleteDebtorsHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "debtors", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
 
 	if err := app.store.Debtors.Delete(r.Context(), id); err != nil {
 		app.internalServerError(w, r, err)

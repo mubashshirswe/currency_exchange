@@ -68,7 +68,17 @@ func (app *application) CreateMySoftBalanceRecordHandler(w http.ResponseWriter, 
 }
 
 func (app *application) DeleteMySoftBalanceRecordHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "soft_balance_records", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	if err := app.service.SoftBalanceRecords.RollbackSoftBalanceRecord(r.Context(), id); err != nil {
 		app.internalServerError(w, r, err)
 		return

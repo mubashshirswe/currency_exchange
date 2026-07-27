@@ -445,6 +445,48 @@ func (s *DebtorsStorage) GetById(ctx context.Context, id int64) (*Debtors, error
 	return credit, nil
 }
 
+// GetByCompanyPhoneAndCurrency — kompaniya ichida telefon + valyuta bo'yicha qarzdorni topadi.
+// Transaction'dan qarz yozilganda mavjud qarzdorni qayta ishlatish uchun ishlatiladi.
+// Topilmasa sql.ErrNoRows qaytadi.
+func (s *DebtorsStorage) GetByCompanyPhoneAndCurrency(
+	ctx context.Context,
+	companyId int64,
+	phone, currency string,
+) (*Debtors, error) {
+	query := `
+				SELECT id, balance, currency, user_id, phone, company_id, created_at, full_name
+				FROM debtors WHERE company_id = $1 AND phone = $2 AND currency = $3
+				ORDER BY created_at DESC LIMIT 1
+			`
+
+	credit := &Debtors{}
+	err := s.db.QueryRowContext(
+		ctx,
+		query,
+		companyId,
+		phone,
+		currency,
+	).Scan(
+		&credit.ID,
+		&credit.Balance,
+		&credit.Currency,
+		&credit.UserID,
+		&credit.Phone,
+		&credit.CompanyID,
+		&credit.CreatedAt,
+		&credit.FullName,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+	credit.CreatedAtFormatted = credit.CreatedAt.In(loc).Format("2006-01-02 15:04:05")
+
+	return credit, nil
+}
+
 func (s *DebtorsStorage) Update(ctx context.Context, credit *Debtors) error {
 	query := `
 				UPDATE debtors SET balance = $1, currency = $2, user_id = $3, phone = $4, full_name = $5,

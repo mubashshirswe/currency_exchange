@@ -25,6 +25,8 @@ type Debts struct {
 	Phone              string                  `json:"phone"`
 	IsBalanceEffect    int                     `json:"is_balance_effect"`
 	Type               int                     `json:"type"`
+	TransactionID      *int64                  `json:"transaction_id"`
+	TransactionStage   int                     `json:"transaction_stage"`
 	CreatedAt          time.Time               `json:"-"`
 	CreatedAtFormatted string                  `json:"created_at"`
 }
@@ -39,9 +41,10 @@ func NewDebtsStorage(db DBTX) *DebtsStorage {
 
 func (s *DebtsStorage) Create(ctx context.Context, debts *Debts) error {
 	query := `
-		INSERT INTO debts (received_incomes, debted_amount, debted_currency, user_id, 
-		details, phone, is_balance_effect, type, company_id, debtor_id, state)
-		VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, created_at
+		INSERT INTO debts (received_incomes, debted_amount, debted_currency, user_id,
+		details, phone, is_balance_effect, type, company_id, debtor_id, state,
+		transaction_id, transaction_stage)
+		VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id, created_at
 	`
 
 	// Convert ReceivedIncomes to JSON for storage
@@ -64,6 +67,8 @@ func (s *DebtsStorage) Create(ctx context.Context, debts *Debts) error {
 		debts.CompanyID,
 		debts.DebtorID,
 		debts.State,
+		debts.TransactionID,
+		debts.TransactionStage,
 	).Scan(
 		&debts.ID,
 		&debts.CreatedAt,
@@ -79,7 +84,8 @@ func (s *DebtsStorage) Create(ctx context.Context, debts *Debts) error {
 func (s *DebtsStorage) GetByCompanyID(ctx context.Context, companyID int64) ([]Debts, error) {
 	query := `
 		SELECT id, received_incomes, debted_amount, debted_currency, user_id, 
-		details, phone, is_balance_effect, type, created_at, company_id, debtor_id, state
+		details, phone, is_balance_effect, type, created_at, company_id, debtor_id, state,
+		transaction_id, transaction_stage
 		FROM debts WHERE company_id = $1 ORDER BY created_at DESC
 	`
 
@@ -98,7 +104,8 @@ func (s *DebtsStorage) GetByDebtorID(ctx context.Context, debtorID int64, pagina
 			u.username,
 			d.id, d.received_incomes, d.debted_amount, d.debted_currency,
 			d.user_id, d.details, d.phone, d.is_balance_effect,
-			d.type, d.created_at, d.company_id, d.debtor_id, d.state
+			d.type, d.created_at, d.company_id, d.debtor_id, d.state,
+			d.transaction_id, d.transaction_stage
 		FROM debts d
 		LEFT JOIN users u ON d.user_id = u.id
 		WHERE d.debtor_id = $1
@@ -118,7 +125,8 @@ func (s *DebtsStorage) GetByDebtorID(ctx context.Context, debtorID int64, pagina
 func (s *DebtsStorage) GetByUserID(ctx context.Context, userID int64, pagination types.Pagination) ([]Debts, error) {
 	query := `
 		SELECT id, received_incomes, debted_amount, debted_currency, user_id, 
-		details, phone, is_balance_effect, type, created_at, company_id, debtor_id, state
+		details, phone, is_balance_effect, type, created_at, company_id, debtor_id, state,
+		transaction_id, transaction_stage
 		FROM debts WHERE user_id = $1 ORDER BY created_at DESC
 		LIMIT $2 OFFSET $3
 	`
@@ -135,7 +143,8 @@ func (s *DebtsStorage) GetByUserID(ctx context.Context, userID int64, pagination
 func (s *DebtsStorage) GetByID(ctx context.Context, id int64) (*Debts, error) {
 	query := `
 		SELECT id, received_incomes, debted_amount, debted_currency, user_id, 
-		details, phone, is_balance_effect, type, created_at, company_id, debtor_id, state
+		details, phone, is_balance_effect, type, created_at, company_id, debtor_id, state,
+		transaction_id, transaction_stage
 		FROM debts WHERE id = $1
 	`
 
@@ -156,6 +165,8 @@ func (s *DebtsStorage) GetByID(ctx context.Context, id int64) (*Debts, error) {
 		&debt.CompanyID,
 		&debt.DebtorID,
 		&debt.State,
+		&debt.TransactionID,
+		&debt.TransactionStage,
 	)
 
 	if err == sql.ErrNoRows {
@@ -181,7 +192,8 @@ func (s *DebtsStorage) Update(ctx context.Context, debt *Debts) error {
 	query := `
 		UPDATE debts SET received_incomes = $1, debted_amount = $2, debted_currency = $3, 
 		user_id = $4, details = $5, phone = $6, is_balance_effect = $7, type = $8, 
-		company_id = $9, debtor_id = $10, state = $11  WHERE id = $12
+		company_id = $9, debtor_id = $10, state = $11, transaction_id = $12,
+		transaction_stage = $13 WHERE id = $14
 	`
 
 	// Convert ReceivedIncomes to JSON
@@ -204,6 +216,8 @@ func (s *DebtsStorage) Update(ctx context.Context, debt *Debts) error {
 		debt.CompanyID,
 		debt.DebtorID,
 		debt.State,
+		debt.TransactionID,
+		debt.TransactionStage,
 		debt.ID,
 	)
 
@@ -221,6 +235,25 @@ func (s *DebtsStorage) Update(ctx context.Context, debt *Debts) error {
 	}
 
 	return nil
+}
+
+// ListByTransactionID — transaction'dan yaratilgan qarz yozuvlarini qaytaradi.
+// Transaction yangilanganda/o'chirilganda ularni bekor qilish uchun ishlatiladi.
+func (s *DebtsStorage) ListByTransactionID(ctx context.Context, transactionID int64) ([]Debts, error) {
+	query := `
+		SELECT id, received_incomes, debted_amount, debted_currency, user_id,
+		details, phone, is_balance_effect, type, created_at, company_id, debtor_id, state,
+		transaction_id, transaction_stage
+		FROM debts WHERE transaction_id = $1 ORDER BY id
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, transactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query debts by transaction: %w", err)
+	}
+	defer rows.Close()
+
+	return s.scanDebts(rows)
 }
 
 func (s *DebtsStorage) Delete(ctx context.Context, id int64) error {
@@ -265,6 +298,8 @@ func (s *DebtsStorage) scanDebts(rows *sql.Rows) ([]Debts, error) {
 			&debt.CompanyID,
 			&debt.DebtorID,
 			&debt.State,
+			&debt.TransactionID,
+			&debt.TransactionStage,
 		)
 
 		if err != nil {
@@ -321,6 +356,8 @@ func (s *DebtsStorage) scanDebtsWithUsername(rows *sql.Rows) ([]Debts, error) {
 			&debt.CompanyID,
 			&debt.DebtorID,
 			&debt.State,
+			&debt.TransactionID,
+			&debt.TransactionStage,
 		)
 		if err != nil {
 			return nil, err

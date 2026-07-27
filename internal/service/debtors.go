@@ -11,14 +11,14 @@ type DebtorsService struct {
 	store store.Storage
 }
 
-func (s *DebtorsService) GetByCompanyId(ctx context.Context, companyId int64, search *string, dateSearch *string, pagination types.Pagination) ([]map[string]interface{}, error) {
+func (s *DebtorsService) GetByCompanyId(ctx context.Context, businessID int64, companyId int64, search *string, dateSearch *string, pagination types.Pagination) ([]map[string]interface{}, error) {
 
 	debtors, err := s.store.Debtors.GetByCompanyId(ctx, companyId, search, dateSearch, pagination)
 	if err != nil {
 		return nil, err
 	}
 
-	users, err := s.store.Users.GetAll(ctx)
+	users, err := s.store.Users.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}

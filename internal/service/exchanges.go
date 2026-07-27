@@ -126,7 +126,7 @@ func (s *ExchangeService) Update(ctx context.Context, exchange *store.Exchange) 
 	}
 	exchange.CompanyID = old.CompanyID
 
-	records, err := balanceRecordsStorage.GetByField(ctx, "exchange_id", exchange.ID, types.Pagination{Limit: 100, Offset: 0})
+	records, err := balanceRecordsStorage.ListByFieldInternal(ctx, "exchange_id", exchange.ID, types.Pagination{Limit: 100, Offset: 0})
 	if err != nil {
 		return err
 	}
@@ -193,7 +193,7 @@ func (s *ExchangeService) Delete(ctx context.Context, id int64) error {
 	balancesStorage := store.NewBalanceStorage(tx)
 	balanceRecordsStorage := store.NewBalanceRecordStorage(tx)
 
-	exchanges, err := exchangeStorage.GetByField(ctx, "id", id, types.Pagination{Limit: 100, Offset: 0})
+	exchanges, err := exchangeStorage.ListByFieldInternal(ctx, "id", id, types.Pagination{Limit: 100, Offset: 0})
 	if err != nil {
 		tx.Rollback()
 		return err

@@ -15,9 +15,16 @@ import (
 const (
 	TRANSACTION_STATUS_PENDING   = 1
 	TRANSACTION_STATUS_COMPLETED = 2
-	TYPE_SELL                    = 1
-	TYPE_BUY                     = 2
+	// TRANSACTION_STATUS_ACCEPTED — 3 bosqichli oqim: qabul qilingan, topshirilmagan.
+	TRANSACTION_STATUS_ACCEPTED = 4
+	TYPE_SELL                   = 1
+	TYPE_BUY                    = 2
 )
+
+// isOpenTransaction — hali topshirilmagan buyurtma (yaratilgan yoki qabul qilingan).
+func isOpenTransaction(status int64) bool {
+	return status == TRANSACTION_STATUS_PENDING || status == TRANSACTION_STATUS_ACCEPTED
+}
 
 type TransactionService struct {
 	store  store.Storage
@@ -226,7 +233,7 @@ func (s *TransactionService) Update(ctx context.Context, transaction *store.Tran
 	balanceRecordsStorage := store.NewBalanceRecordStorage(tx)
 	transactionsStorage := store.NewTransactionStorage(tx)
 
-	records, err := balanceRecordsStorage.GetByField(ctx, "transaction_id", transaction.ID, types.Pagination{Limit: 1000, Offset: 0})
+	records, err := balanceRecordsStorage.ListByFieldInternal(ctx, "transaction_id", transaction.ID, types.Pagination{Limit: 1000, Offset: 0})
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -386,7 +393,7 @@ func (s *TransactionService) Delete(ctx context.Context, id *int64) error {
 		return err
 	}
 
-	records, err := balanceRecordsStorage.GetByField(ctx, "transaction_id", tran.ID, types.Pagination{Limit: 1000, Offset: 0})
+	records, err := balanceRecordsStorage.ListByFieldInternal(ctx, "transaction_id", tran.ID, types.Pagination{Limit: 1000, Offset: 0})
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -429,17 +436,17 @@ func (s *TransactionService) Delete(ctx context.Context, id *int64) error {
 	return nil
 }
 
-func (s *TransactionService) GetByCompanyId(ctx context.Context, companyId int64, pagination types.Pagination) ([]map[string]interface{}, error) {
-	trans, err := s.store.Transactions.GetByField(ctx, nil, "delivered_company_id", companyId, pagination)
+func (s *TransactionService) GetByCompanyId(ctx context.Context, businessID int64, companyId int64, pagination types.Pagination) ([]map[string]interface{}, error) {
+	trans, err := s.store.Transactions.GetByField(ctx, businessID, nil, "delivered_company_id", companyId, pagination)
 	if err != nil {
 		return nil, err
 	}
 
-	companies, err := s.store.Companies.GetAll(ctx)
+	companies, err := s.store.Companies.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}
-	users, err := s.store.Users.GetAll(ctx)
+	users, err := s.store.Users.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +456,7 @@ func (s *TransactionService) GetByCompanyId(ctx context.Context, companyId int64
 	giveCurrencies := make(map[string]int64)
 
 	for _, tran := range trans {
-		if tran.Status == TRANSACTION_STATUS_PENDING {
+		if isOpenTransaction(tran.Status) {
 			if tran.Type == TYPE_SELL {
 				for _, tr := range tran.DeliveredOutcomes {
 					getCurrencies[tr.DeliveredCurrency] += tr.DeliveredAmount
@@ -496,6 +503,7 @@ func (s *TransactionService) GetByCompanyId(ctx context.Context, companyId int64
 			if receivedUser != nil {
 				res["received_user"] = receivedUser.Username
 			}
+			attachAcceptedInfo(res, users, tran)
 
 			response = append(response, res)
 		}
@@ -508,17 +516,17 @@ func (s *TransactionService) GetByCompanyId(ctx context.Context, companyId int64
 	return response, nil
 }
 
-func (s *TransactionService) GetByField(ctx context.Context, search *string, fieldName string, value any, pagination types.Pagination) ([]map[string]interface{}, error) {
-	trans, err := s.store.Transactions.GetByField(ctx, search, fieldName, value, pagination)
+func (s *TransactionService) GetByField(ctx context.Context, businessID int64, search *string, fieldName string, value any, pagination types.Pagination) ([]map[string]interface{}, error) {
+	trans, err := s.store.Transactions.GetByField(ctx, businessID, search, fieldName, value, pagination)
 	if err != nil {
 		return nil, err
 	}
 
-	companies, err := s.store.Companies.GetAll(ctx)
+	companies, err := s.store.Companies.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}
-	users, err := s.store.Users.GetAll(ctx)
+	users, err := s.store.Users.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}
@@ -574,6 +582,7 @@ func (s *TransactionService) GetByField(ctx context.Context, search *string, fie
 			"type":                 tran.Type,
 			"status":               tran.Status,
 		}
+		attachAcceptedInfo(res, users, tran)
 
 		response = append(response, res)
 	}
@@ -581,17 +590,17 @@ func (s *TransactionService) GetByField(ctx context.Context, search *string, fie
 	return response, nil
 }
 
-func (s *TransactionService) Archived(ctx context.Context, pagination types.Pagination) ([]map[string]interface{}, error) {
-	trans, err := s.store.Transactions.Archived(ctx, pagination)
+func (s *TransactionService) Archived(ctx context.Context, businessID int64, pagination types.Pagination) ([]map[string]interface{}, error) {
+	trans, err := s.store.Transactions.Archived(ctx, businessID, pagination)
 	if err != nil {
 		return nil, err
 	}
 
-	companies, err := s.store.Companies.GetAll(ctx)
+	companies, err := s.store.Companies.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}
-	users, err := s.store.Users.GetAll(ctx)
+	users, err := s.store.Users.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}
@@ -647,14 +656,15 @@ func (s *TransactionService) Archived(ctx context.Context, pagination types.Pagi
 			"type":                 tran.Type,
 			"status":               tran.Status,
 		}
+		attachAcceptedInfo(res, users, tran)
 
 		response = append(response, res)
 	}
 	return response, nil
 }
 
-func (s *TransactionService) GetInfos(ctx context.Context, date string) ([]store.CompanyAmount, error) {
-	companies, err := s.store.Companies.GetAll(ctx)
+func (s *TransactionService) GetInfos(ctx context.Context, businessID int64, date string) ([]store.CompanyAmount, error) {
+	companies, err := s.store.Companies.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load companies: %w", err)
 	}
@@ -676,6 +686,23 @@ func (s *TransactionService) GetInfos(ctx context.Context, date string) ([]store
 	_ = NewServiceFeeService(s.store).AttachRemainingToCompanyAmounts(ctx, trans, companies)
 
 	return trans, nil
+}
+
+// attachAcceptedInfo — javobga qabul qilish bosqichi ma'lumotini qo'shadi.
+// Oddiy oqimda maydonlar bo'sh bo'ladi (mobil ularni e'tiborsiz qoldiradi).
+func attachAcceptedInfo(res map[string]interface{}, users []store.User, tran store.Transaction) {
+	acceptedUser := ""
+	if tran.AcceptedUserId != nil {
+		if user := GetUser(users, *tran.AcceptedUserId); user != nil {
+			acceptedUser = user.Username
+		}
+	}
+
+	res["accepted_user_id"] = tran.AcceptedUserId
+	res["accepted_user"] = acceptedUser
+	res["accepted_company_id"] = tran.AcceptedCompanyId
+	res["accepted_at"] = tran.AcceptedAtFormatted
+	res["is_accepted"] = tran.Status == TRANSACTION_STATUS_ACCEPTED
 }
 
 // formatServiceFee — eski mobil versiyalar bilan moslik uchun xizmat puli matn ko'rinishini qaytaradi.

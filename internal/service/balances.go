@@ -10,7 +10,7 @@ type BalanceService struct {
 	store store.Storage
 }
 
-func (s *BalanceService) GetByCompanyId(ctx context.Context, companyId int64) ([]map[string]interface{}, error) {
+func (s *BalanceService) GetByCompanyId(ctx context.Context, businessID int64, companyId int64) ([]map[string]interface{}, error) {
 	balances, err := s.store.Balances.GetByCompanyId(ctx, &companyId)
 	if err != nil {
 		return nil, err
@@ -18,7 +18,7 @@ func (s *BalanceService) GetByCompanyId(ctx context.Context, companyId int64) ([
 
 	var response []map[string]interface{}
 
-	users, err := s.store.Users.GetAll(ctx)
+	users, err := s.store.Users.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}
@@ -47,20 +47,20 @@ func (s *BalanceService) GetByCompanyId(ctx context.Context, companyId int64) ([
 	return response, nil
 }
 
-func (s *BalanceService) GetAll(ctx context.Context) ([]map[string]interface{}, error) {
-	balances, err := s.store.Balances.GetAll(ctx)
+func (s *BalanceService) GetAll(ctx context.Context, businessID int64) ([]map[string]interface{}, error) {
+	balances, err := s.store.Balances.GetAll(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}
 
 	var response []map[string]interface{}
 
-	users, err := s.store.Users.GetAll(ctx)
+	users, err := s.store.Users.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}
 
-	companies, err := s.store.Companies.GetAll(ctx)
+	companies, err := s.store.Companies.ListByBusiness(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}

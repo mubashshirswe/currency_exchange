@@ -26,6 +26,18 @@ func (app *application) CreateExchangeHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+	if payload.UserId == 0 {
+		payload.UserId = t.UserID
+	}
+	if err := app.authorizeUser(r, t, payload.UserId); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	exchange := &store.Exchange{
 		ReceivedMoney:    payload.ReceivedMoney,
 		ReceivedCurrency: payload.ReceivedCurrency,
@@ -87,7 +99,17 @@ func (app *application) UpdateExchangeV2Handler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	userID, _ := r.Context().Value(UserKey).(int64)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	userID := t.UserID
+	if err := app.authorizeResource(r, t, "exchanges", getIDFromContext(r)); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	exchange := &store.Exchange{
 		ID:               getIDFromContext(r),
 		ReceivedMoney:    payload.ReceivedMoney,
@@ -112,7 +134,16 @@ func (app *application) UpdateExchangeV2Handler(w http.ResponseWriter, r *http.R
 
 // DeleteExchangeV2Handler — exchange'ni o'chiradi (company balans).
 func (app *application) DeleteExchangeV2Handler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "exchanges", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
 
 	if err := app.service.CompanyOps.DeleteExchangeV2(r.Context(), id); err != nil {
 		app.internalServerError(w, r, err)
@@ -133,7 +164,16 @@ func (app *application) GetExchangesHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	records, err := app.store.Exchanges.GetByField(r.Context(), payload.FieldName, payload.FieldValue, app.Pagination)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+	if err := app.authorizeFilter(r, t, payload.FieldName, payload.FieldValue); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	records, err := app.store.Exchanges.GetByField(r.Context(), t.BusinessID, payload.FieldName, payload.FieldValue, app.Pagination)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -152,8 +192,35 @@ func (app *application) UpdateExchangeHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "exchanges", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	companyID := t.CompanyID
+	if payload.CompanyID != nil {
+		companyID = *payload.CompanyID
+	}
+	if err := app.authorizeCompany(r, t, companyID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+	if payload.UserId == 0 {
+		payload.UserId = t.UserID
+	}
+	if err := app.authorizeUser(r, t, payload.UserId); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	exchange := &store.Exchange{
-		ID:               getIDFromContext(r),
+		ID:               id,
 		ReceivedMoney:    payload.ReceivedMoney,
 		ReceivedCurrency: payload.ReceivedCurrency,
 		SelledMoney:      payload.SelledMoney,
@@ -162,7 +229,7 @@ func (app *application) UpdateExchangeHandler(w http.ResponseWriter, r *http.Req
 		ProfitCurrency:   payload.ProfitCurrency,
 		UserId:           payload.UserId,
 		Details:          payload.Details,
-		CompanyID:        *payload.CompanyID,
+		CompanyID:        companyID,
 	}
 
 	if err := app.service.Exchanges.Update(r.Context(), exchange); err != nil {
@@ -177,7 +244,16 @@ func (app *application) UpdateExchangeHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (app *application) DeleteExchangeHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "exchanges", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
 
 	if err := app.service.Exchanges.Delete(r.Context(), id); err != nil {
 		app.internalServerError(w, r, err)
@@ -191,15 +267,12 @@ func (app *application) DeleteExchangeHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (app *application) ArchiveExchangesHandler(w http.ResponseWriter, r *http.Request) {
-	userId := r.Context().Value(UserKey).(int64)
-	println("userId", userId)
-
-	user, err := app.store.Users.GetById(r.Context(), &userId)
-	if err != nil {
-		app.internalServerError(w, r, err)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
 		return
 	}
-	if err := app.store.Exchanges.Archive(r.Context(), user.CompanyId); err != nil {
+
+	if err := app.store.Exchanges.Archive(r.Context(), t.CompanyID); err != nil {
 		app.internalServerError(w, r, err)
 		return
 	}
@@ -213,7 +286,12 @@ func (app *application) ArchiveExchangesHandler(w http.ResponseWriter, r *http.R
 func (app *application) ArchivedExchangesHandler(w http.ResponseWriter, r *http.Request) {
 	app.LoadPaginationInfo(r, r.Context())
 
-	Exchanges, err := app.store.Exchanges.Archived(r.Context(), app.Pagination)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	Exchanges, err := app.store.Exchanges.Archived(r.Context(), t.BusinessID, app.Pagination)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return

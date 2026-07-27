@@ -11,6 +11,9 @@ const (
 	STATUS_CREATED   = 1
 	STATUS_COMPLETED = 2
 	STATUS_ARCHIVED  = 3
+	// STATUS_ACCEPTED — 3 bosqichli oqimdagi oraliq holat: buyurtma qabul qilingan,
+	// lekin hali topshirilmagan. Balansga ta'sir qilmaydi.
+	STATUS_ACCEPTED = 4
 )
 
 type DBTX interface {
@@ -28,10 +31,10 @@ type Storage struct {
 		Create(context.Context, *Exchange) error
 		Update(context.Context, *Exchange) error
 		GetById(context.Context, int64) (*Exchange, error)
-		GetByField(context.Context, string, any, types.Pagination) ([]Exchange, error)
+		GetByField(context.Context, int64, string, any, types.Pagination) ([]Exchange, error)
 		Delete(context.Context, int64) error
 		Archive(context.Context, int64) error
-		Archived(context.Context, types.Pagination) ([]Exchange, error)
+		Archived(context.Context, int64, types.Pagination) ([]Exchange, error)
 	}
 
 	Debtors interface {
@@ -53,13 +56,28 @@ type Storage struct {
 		Delete(context.Context, int64) error
 	}
 
+	Businesses interface {
+		Create(context.Context, *Business) error
+		GetById(context.Context, int64) (*Business, error)
+		Update(context.Context, *Business) error
+		SetStatus(context.Context, int64, int64) error
+		Delete(context.Context, int64) error
+	}
+
+	BusinessSettings interface {
+		GetByBusinessID(context.Context, int64) (*BusinessSettings, error)
+		Upsert(context.Context, *BusinessSettings) error
+	}
+
 	Users interface {
-		Login(context.Context, *User) error
+		LoginCandidates(context.Context, string, string) ([]User, error)
 		Create(context.Context, *User) error
 		Update(context.Context, *User) error
-		GetAll(context.Context) ([]User, error)
+		ListByBusiness(context.Context, int64) ([]User, error)
+		ListByCompany(context.Context, int64, int64) ([]User, error)
 		GetById(context.Context, *int64) (*User, error)
-		Delete(context.Context, *int64) error
+		GetByIdInBusiness(context.Context, int64, int64) (*User, error)
+		Delete(context.Context, *int64, int64) error
 	}
 
 	Balances interface {
@@ -68,7 +86,7 @@ type Storage struct {
 		GetByUserIdAndCurrency(context.Context, *int64, string) (*Balance, error)
 		GetByUserId(context.Context, *int64) ([]Balance, error)
 		GetByCompanyId(context.Context, *int64) ([]Balance, error)
-		GetAll(context.Context) ([]Balance, error)
+		GetAll(context.Context, int64) ([]Balance, error)
 		Update(context.Context, *Balance) error
 		Delete(context.Context, int64) error
 	}
@@ -111,24 +129,26 @@ type Storage struct {
 
 	BalanceRecords interface {
 		Create(context.Context, *BalanceRecord) error
-		GetByField(context.Context, string, any, types.Pagination) ([]BalanceRecord, error)
-		GetByFieldAndDate(context.Context, string, *string, *string, any, types.Pagination) ([]BalanceRecord, error)
+		GetByField(context.Context, int64, string, any, types.Pagination) ([]BalanceRecord, error)
+		GetByFieldAndDate(context.Context, int64, string, *string, *string, any, types.Pagination) ([]BalanceRecord, error)
 		Update(context.Context, *BalanceRecord) error
 		Delete(context.Context, int64) error
 		Archive(context.Context, int64) error
-		Archived(context.Context, types.Pagination) ([]BalanceRecord, error)
+		Archived(context.Context, int64, types.Pagination) ([]BalanceRecord, error)
 	}
 
 	Transactions interface {
 		Create(context.Context, *Transaction) error
 		Update(context.Context, *Transaction) error
+		SetAccepted(ctx context.Context, id, userID, companyID int64) error
+		GetById(context.Context, int64) (*Transaction, error)
 		Delete(context.Context, *int64) error
-		GetByField(context.Context, *string, string, any, types.Pagination) ([]Transaction, error)
+		GetByField(context.Context, int64, *string, string, any, types.Pagination) ([]Transaction, error)
 		GetInfos(ctx context.Context, companyId int64) ([]Transaction, error)
 		GetCompanyFinalAmounts(ctx context.Context, companyIDs []int64, date string) ([]CompanyAmount, error)
-		GetByFieldAndDate(context.Context, string, string, string, any, types.Pagination) ([]Transaction, error)
+		GetByFieldAndDate(context.Context, int64, string, string, string, any, types.Pagination) ([]Transaction, error)
 		Archive(context.Context, int64) error
-		Archived(context.Context, types.Pagination) ([]Transaction, error)
+		Archived(context.Context, int64, types.Pagination) ([]Transaction, error)
 	}
 
 	TransactionServiceFees interface {
@@ -137,16 +157,16 @@ type Storage struct {
 		Update(context.Context, *TransactionServiceFee) error
 		DeleteByTransactionID(context.Context, int64) error
 		ListPendingFIFO(context.Context, int64, string) ([]TransactionServiceFee, error)
-		ListAllPending(context.Context, string) ([]TransactionServiceFee, error)
+		ListAllPending(context.Context, int64, string) ([]TransactionServiceFee, error)
 		ListByCompany(context.Context, int64, string, int64, types.Pagination) ([]TransactionServiceFee, error)
-		ListAll(context.Context, string, int64, types.Pagination) ([]TransactionServiceFee, error)
+		ListAll(context.Context, int64, string, int64, types.Pagination) ([]TransactionServiceFee, error)
 		GetRemainingByCompanies(context.Context, []int64) ([]ServiceFeeRemainingRow, error)
 	}
 
 	ServiceFeeSettlements interface {
 		Create(context.Context, *ServiceFeeSettlement) error
 		ListByCompany(context.Context, int64, string, types.Pagination) ([]ServiceFeeSettlement, error)
-		ListAll(context.Context, string, types.Pagination) ([]ServiceFeeSettlement, error)
+		ListAll(context.Context, int64, string, types.Pagination) ([]ServiceFeeSettlement, error)
 	}
 
 	ServiceFeeSettlementItems interface {
@@ -155,10 +175,12 @@ type Storage struct {
 
 	Companies interface {
 		Create(context.Context, *Company) error
-		GetAll(context.Context) ([]Company, error)
+		ListByBusiness(context.Context, int64) ([]Company, error)
 		GetById(context.Context, *int64) (*Company, error)
+		GetByIdInBusiness(context.Context, int64, int64) (*Company, error)
+		BelongsToBusiness(context.Context, int64, int64) (bool, error)
 		Update(context.Context, *Company) error
-		Delete(context.Context, *int64) error
+		Delete(context.Context, *int64, int64) error
 	}
 
 	UserSessions interface {
@@ -178,6 +200,8 @@ func NewStorage(db *sql.DB) Storage {
 
 	return Storage{
 		DB:                        db,
+		Businesses:                &BusinessStorage{db: dbwrapper},
+		BusinessSettings:          &BusinessSettingsStorage{db: dbwrapper},
 		Debts:                     &DebtsStorage{db: dbwrapper},
 		Exchanges:                 &ExchangeStorage{db: dbwrapper},
 		Debtors:                   &DebtorsStorage{db: dbwrapper},

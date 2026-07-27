@@ -63,9 +63,11 @@ func (s *BalanceStorage) Create(ctx context.Context, balance *Balance) error {
 	return nil
 }
 
-func (s *BalanceStorage) GetAll(ctx context.Context) ([]Balance, error) {
-	query := `SELECT id, balance, user_id, in_out_lay, out_in_lay, company_id, currency, created_at FROM balances`
-	rows, err := s.db.QueryContext(ctx, query)
+// GetAll — faqat berilgan business ichidagi barcha balanslar.
+func (s *BalanceStorage) GetAll(ctx context.Context, businessID int64) ([]Balance, error) {
+	query := `SELECT id, balance, user_id, in_out_lay, out_in_lay, company_id, currency, created_at
+				FROM balances WHERE business_id = $1`
+	rows, err := s.db.QueryContext(ctx, query, businessID)
 	if err != nil {
 		return nil, err
 	}

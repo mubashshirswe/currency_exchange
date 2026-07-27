@@ -34,9 +34,22 @@ type Transaction struct {
 	Details            string                    `json:"details"`
 	Status             int64                     `json:"status"`
 	Type               int64                     `json:"type"`
-	CreatedAt          time.Time                 `json:"-"`
-	CreatedAtFormatted string                    `json:"created_at"`
+
+	// Qabul qilish bosqichi (faqat 3 bosqichli oqimda to'ladi) — balansga ta'sir qilmaydi.
+	AcceptedUserId      *int64     `json:"accepted_user_id"`
+	AcceptedCompanyId   *int64     `json:"accepted_company_id"`
+	AcceptedAt          *time.Time `json:"-"`
+	AcceptedAtFormatted string     `json:"accepted_at"`
+
+	CreatedAt          time.Time `json:"-"`
+	CreatedAtFormatted string    `json:"created_at"`
 }
+
+// transactionColumns — barcha SELECT so'rovlari uchun yagona ustunlar ro'yxati.
+// Tartibi GetById va ConvertRowsToObject dagi Scan tartibi bilan bir xil.
+const transactionColumns = `id, number, delivered_number, service_fee_amount, service_fee_currency, service_fee_details,
+			received_incomes, delivered_outcomes, received_company_id, delivered_company_id, received_user_id, delivered_user_id,
+			phone, details, status, type, accepted_user_id, accepted_company_id, accepted_at, created_at`
 
 type TransactionStorage struct {
 	db DBTX
@@ -183,7 +196,7 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 			details = $11,
 			status = $12,
 			type = $13
-		WHERE id = $14 AND status = $15
+		WHERE id = $14 AND status IN ($15, $16)
 	`
 
 	result, err := s.db.ExecContext(
@@ -204,6 +217,7 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 		tr.Type,
 		tr.ID,
 		STATUS_CREATED,
+		STATUS_ACCEPTED,
 	)
 
 	if err != nil {
@@ -222,23 +236,64 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 	return nil
 }
 
+// SetAccepted — tranzaksiyani "qabul qilindi" holatiga o'tkazadi. Balansga tegmaydi:
+// faqat status va qabul qilgan hodim/kompaniya izlari yoziladi.
+// Faqat yaratilgan (status = STATUS_CREATED) tranzaksiya qabul qilinadi — takroriy
+// qabul qilish sql.ErrNoRows qaytaradi.
+func (s *TransactionStorage) SetAccepted(ctx context.Context, id, userID, companyID int64) error {
+	query := `
+		UPDATE transactions
+		SET status = $1, accepted_user_id = $2, accepted_company_id = $3, accepted_at = now()
+		WHERE id = $4 AND status = $5
+	`
+
+	result, err := s.db.ExecContext(ctx, query, STATUS_ACCEPTED, userID, companyID, id, STATUS_CREATED)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+// setAcceptedAt — nullable accepted_at ni Toshkent vaqtida formatlaydi.
+func setAcceptedAt(tr *Transaction, acceptedAt sql.NullTime) {
+	if !acceptedAt.Valid {
+		return
+	}
+
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+	at := acceptedAt.Time
+	tr.AcceptedAt = &at
+	tr.AcceptedAtFormatted = at.In(loc).Format("2006-01-02 15:04:05")
+}
+
+// GetById — yakunlanmagan tranzaksiya: yaratilgan yoki qabul qilingan holatda.
 func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transaction, error) {
 	query := `
-				SELECT id, number, delivered_number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
-	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at
-				FROM transactions WHERE id = $1 AND status = $2 ORDER BY created_at DESC
+				SELECT ` + transactionColumns + `
+				FROM transactions WHERE id = $1 AND status IN ($2, $3) ORDER BY created_at DESC
 			`
 
 	tr := &Transaction{}
 	var receivedIncomesJSON []byte
 	var deliveredOutcomesJSON []byte
 	var serviceFeeDetails sql.NullString
+	var acceptedAt sql.NullTime
 
 	err := s.db.QueryRowContext(
 		ctx,
 		query,
 		id,
 		STATUS_CREATED,
+		STATUS_ACCEPTED,
 	).Scan(
 		&tr.ID,
 		&tr.Number,
@@ -256,6 +311,9 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 		&tr.Details,
 		&tr.Status,
 		&tr.Type,
+		&tr.AcceptedUserId,
+		&tr.AcceptedCompanyId,
+		&acceptedAt,
 		&tr.CreatedAt)
 
 	if err != nil {
@@ -263,6 +321,7 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 	}
 
 	tr.ServiceFeeDetails = serviceFeeDetails.String
+	setAcceptedAt(tr, acceptedAt)
 
 	if err := json.Unmarshal(receivedIncomesJSON, &tr.ReceivedIncomes); err != nil {
 		return nil, err
@@ -278,16 +337,16 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 	return tr, nil
 }
 
-func (s *TransactionStorage) Archived(ctx context.Context, pagination types.Pagination) ([]Transaction, error) {
+func (s *TransactionStorage) Archived(ctx context.Context, businessID int64, pagination types.Pagination) ([]Transaction, error) {
 	query := `
-				SELECT id, number, delivered_number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
-	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at
-				FROM transactions WHERE status = $1   ORDER BY created_at DESC ` + fmt.Sprintf("OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+				SELECT ` + transactionColumns + `
+				FROM transactions WHERE status = $1 AND business_id = $2  ORDER BY created_at DESC ` + fmt.Sprintf("OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
 
 	rows, err := s.db.QueryContext(
 		ctx,
 		query,
 		STATUS_ARCHIVED,
+		businessID,
 	)
 
 	return s.ConvertRowsToObject(rows, err)
@@ -295,6 +354,7 @@ func (s *TransactionStorage) Archived(ctx context.Context, pagination types.Pagi
 
 func (s *TransactionStorage) GetByField(
 	ctx context.Context,
+	businessID int64,
 	search *string,
 	fieldName string,
 	fieldValue any,
@@ -307,19 +367,11 @@ func (s *TransactionStorage) GetByField(
 		log.Println("DO NOT COME search param")
 	}
 
-	allowedFields := map[string]bool{
-		"id":                   true,
-		"received_user_id":     true,
-		"delivered_user_id":    true,
-		"received_company_id":  true,
-		"delivered_company_id": true,
+	if err := checkFilterField(transactionFilterFields, fieldName); err != nil {
+		return nil, err
 	}
 
-	if !allowedFields[fieldName] {
-		return nil, fmt.Errorf("invalid field name")
-	}
-
-	args := []any{fieldValue, STATUS_ARCHIVED}
+	args := []any{fieldValue, STATUS_ARCHIVED, businessID}
 
 	// placeholder qo'shadi va $N qaytaradi
 	ph := func(v any) string {
@@ -328,11 +380,9 @@ func (s *TransactionStorage) GetByField(
 	}
 
 	query := `
-		SELECT id, number, delivered_number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
-		received_company_id, delivered_company_id, received_user_id, delivered_user_id,
-		phone, details, status, type, created_at
+		SELECT ` + transactionColumns + `
 		FROM transactions
-		WHERE ` + fieldName + ` = $1 AND status != $2
+		WHERE ` + fieldName + ` = $1 AND status != $2 AND business_id = $3
 	`
 
 	if search != nil && strings.TrimSpace(*search) != "" {
@@ -376,27 +426,32 @@ func (s *TransactionStorage) GetByField(
 	return s.ConvertRowsToObject(rows, err)
 }
 
+// GetInfos — kompaniyaga yetkazilishi kerak bo'lgan tranzaksiyalar:
+// yaratilgan va (3 bosqichli oqimda) qabul qilinganlar.
 func (s *TransactionStorage) GetInfos(ctx context.Context, companyId int64) ([]Transaction, error) {
 	query := `
-				SELECT id, number, delivered_number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
-	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at
-				FROM transactions WHERE delivered_company_id = $1 AND status = $2
+				SELECT ` + transactionColumns + `
+				FROM transactions WHERE delivered_company_id = $1 AND status IN ($2, $3)
 			`
 	rows, err := s.db.QueryContext(
 		ctx,
 		query,
 		companyId,
 		STATUS_CREATED,
+		STATUS_ACCEPTED,
 	)
 
 	return s.ConvertRowsToObject(rows, err)
 }
 
-func (s *TransactionStorage) GetByFieldAndDate(ctx context.Context, fieldName, from, to string, fieldValue any, pagination types.Pagination) ([]Transaction, error) {
+func (s *TransactionStorage) GetByFieldAndDate(ctx context.Context, businessID int64, fieldName, from, to string, fieldValue any, pagination types.Pagination) ([]Transaction, error) {
+	if err := checkFilterField(transactionFilterFields, fieldName); err != nil {
+		return nil, err
+	}
+
 	query := `
-				SELECT id, number, delivered_number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
-	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at
-				FROM transactions WHERE ` + fmt.Sprintf("%v", fieldName) + ` = $1 AND created_at BETWEEN $2 AND $3 AND status != $4  ` + fmt.Sprintf("ORDER BY created_at DESC OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+				SELECT ` + transactionColumns + `
+				FROM transactions WHERE ` + fieldName + ` = $1 AND created_at BETWEEN $2 AND $3 AND status != $4 AND business_id = $5 ` + fmt.Sprintf("ORDER BY created_at DESC OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
 
 	rows, err := s.db.QueryContext(
 		ctx,
@@ -405,6 +460,7 @@ func (s *TransactionStorage) GetByFieldAndDate(ctx context.Context, fieldName, f
 		from,
 		to,
 		STATUS_ARCHIVED,
+		businessID,
 	)
 
 	return s.ConvertRowsToObject(rows, err)
@@ -447,6 +503,7 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 	for rows.Next() {
 		tr := &Transaction{}
 		var serviceFeeDetails sql.NullString
+		var acceptedAt sql.NullTime
 		err := rows.Scan(
 			&tr.ID,
 			&tr.Number,
@@ -464,6 +521,9 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 			&tr.Details,
 			&tr.Status,
 			&tr.Type,
+			&tr.AcceptedUserId,
+			&tr.AcceptedCompanyId,
+			&acceptedAt,
 			&tr.CreatedAt,
 		)
 
@@ -472,6 +532,7 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 		}
 
 		tr.ServiceFeeDetails = serviceFeeDetails.String
+		setAcceptedAt(tr, acceptedAt)
 
 		if err := json.Unmarshal(receivedIncomesJSON, &tr.ReceivedIncomes); err != nil {
 			return nil, err

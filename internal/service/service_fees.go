@@ -126,13 +126,15 @@ func (s *ServiceFeeService) ListFees(
 	return s.store.TransactionServiceFees.ListByCompany(ctx, companyID, currency, status, pagination)
 }
 
+// ListFeesAll — business ichidagi barcha kompaniyalar bo'yicha (business egasi uchun).
 func (s *ServiceFeeService) ListFeesAll(
 	ctx context.Context,
+	businessID int64,
 	currency string,
 	status int64,
 	pagination types.Pagination,
 ) ([]store.TransactionServiceFee, error) {
-	return s.store.TransactionServiceFees.ListAll(ctx, currency, status, pagination)
+	return s.store.TransactionServiceFees.ListAll(ctx, businessID, currency, status, pagination)
 }
 
 func (s *ServiceFeeService) ListSettlements(
@@ -144,12 +146,14 @@ func (s *ServiceFeeService) ListSettlements(
 	return s.store.ServiceFeeSettlements.ListByCompany(ctx, companyID, currency, pagination)
 }
 
+// ListSettlementsAll — business ichidagi barcha yakunlashlar (business egasi uchun).
 func (s *ServiceFeeService) ListSettlementsAll(
 	ctx context.Context,
+	businessID int64,
 	currency string,
 	pagination types.Pagination,
 ) ([]store.ServiceFeeSettlement, error) {
-	return s.store.ServiceFeeSettlements.ListAll(ctx, currency, pagination)
+	return s.store.ServiceFeeSettlements.ListAll(ctx, businessID, currency, pagination)
 }
 
 // Settle — xizmat pulini 0 qilish (yakunlash). Har bir amal alohida yozuv.

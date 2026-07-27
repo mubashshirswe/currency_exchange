@@ -61,17 +61,43 @@ func (app *application) mount() *chi.Mux {
 
 	r.Route("/api/v1", func(r chi.Router) {
 
-		r.Post("/company", app.CreateCompanyHandler)
-
-		r.Post("/users/register", app.CreateUserHandler)
+		// Mijoz ilovasi uchun ochiq yo'llar: faqat kirish va tokenni yangilash.
 		r.Post("/users/login", app.LoginUserHandler)
 		r.Post("/users/refresh", app.RefreshTokenHandler)
+
+		// Hodim yaratish business ichida bo'ladi — business egasining tokeni.
+		r.With(app.JWTUserMiddleware()).Post("/users/register", app.CreateUserHandler)
+
+		// Platforma operatori (X-Admin-Key): business va kompaniya faqat shu
+		// yerdan ochiladi, mijoz ilovasida bunday oqim yo'q.
+		r.With(app.PlatformAdminMiddleware).Route("/admin", func(r chi.Router) {
+			r.Post("/businesses", app.AdminCreateBusinessHandler)
+			r.Route("/businesses/{id}", func(r chi.Router) {
+				r.Get("/", app.AdminGetBusinessHandler)
+				r.Put("/", app.AdminUpdateBusinessHandler)
+			})
+
+			r.Post("/companies", app.AdminCreateCompanyHandler)
+			r.Route("/companies/{id}", func(r chi.Router) {
+				r.Put("/", app.AdminUpdateCompanyHandler)
+				r.Delete("/", app.AdminDeleteCompanyHandler)
+			})
+		})
 
 		r.With(app.JWTUserMiddleware()).Route("/user", func(r chi.Router) {
 
 			r.Get("/all", app.GetAllUserHandler)
+			r.Post("/", app.CreateUserHandler)
 			r.Put("/{id}", app.UpdateUserHandler)
 			r.Delete("/{id}", app.DeleteUserHandler)
+
+			// Business (tenant) va jamoalar — faqat o'qish.
+			r.Get("/business", app.GetMyBusinessHandler)
+			r.Get("/business/team", app.GetBusinessTeamHandler)
+
+			// Business sozlamalari: o'qish — hamma, o'zgartirish — faqat ega.
+			r.Get("/business/settings", app.GetMyBusinessSettingsHandler)
+			r.Put("/business/settings", app.UpdateMyBusinessSettingsHandler)
 
 			// Kompaniya balansi (joriy foydalanuvchi kompaniyasi bo'yicha)
 			r.Get("/company-balances", app.GetMyCompanyBalancesHandler)
@@ -161,6 +187,8 @@ func (app *application) mount() *chi.Mux {
 				r.With(app.DedupCreateMiddleware).Post("/create/v2", app.CreateTransactionV2Handler)
 				r.Post("/complete", app.CompleteTransactionHandler)
 				r.Post("/complete/v2", app.CompleteTransactionV2Handler)
+				// 3 bosqichli oqim: yaratish => qabul qilish => topshirish.
+				r.Post("/accept/v2", app.AcceptTransactionV2Handler)
 				r.Get("/show/process/{id}", app.GetTransactionsCompanyIdHandler)
 				r.Post("/archive", app.ArchiveTransactionsHandler)
 				r.Get("/archived", app.ArchivedTransactionsHandler)
@@ -175,13 +203,11 @@ func (app *application) mount() *chi.Mux {
 				})
 			})
 
+			// Kompaniyalar — faqat o'qish: ochish/o'chirish admin API'da.
 			r.Route("/companies", func(r chi.Router) {
-				r.Post("/", app.CreateCompanyHandler)
 				r.Get("/all", app.GetAllCompanyHandler)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", app.GetCompanyByIdHandler)
-					r.Put("/", app.UpdateCompanyHandler)
-					r.Delete("/", app.DeleteCompanyHandler)
 					r.Get("/balances", app.GetCompanyBalancesHandler)
 					r.Get("/balance-records", app.GetCompanyBalanceRecordsHandler)
 					r.Get("/users/activity", app.GetCompanyUserActivityHandler)

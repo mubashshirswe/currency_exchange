@@ -18,8 +18,8 @@ type Service struct {
 	}
 
 	Balances interface {
-		GetByCompanyId(context.Context, int64) ([]map[string]interface{}, error)
-		GetAll(context.Context) ([]map[string]interface{}, error)
+		GetByCompanyId(context.Context, int64, int64) ([]map[string]interface{}, error)
+		GetAll(context.Context, int64) ([]map[string]interface{}, error)
 	}
 
 	Debts interface {
@@ -30,7 +30,7 @@ type Service struct {
 	}
 
 	Debtors interface {
-		GetByCompanyId(context.Context, int64, *string, *string, types.Pagination) ([]map[string]interface{}, error)
+		GetByCompanyId(context.Context, int64, int64, *string, *string, types.Pagination) ([]map[string]interface{}, error)
 	}
 
 	BalanceRecords interface {
@@ -55,9 +55,12 @@ type Service struct {
 		CreateExchangeV2(context.Context, *store.Exchange) error
 		UpdateExchangeV2(context.Context, *store.Exchange) error
 		DeleteExchangeV2(context.Context, int64) error
-		PerformTransactionV2(context.Context, *store.Transaction, int64) error
-		CompleteTransactionV2(context.Context, types.TransactionComplete, int64) error
-		UpdateTransactionV2(context.Context, *store.Transaction, int64) error
+		PerformTransactionV2(context.Context, *store.Transaction, int64, types.TransactionDebtInput) error
+		// AcceptTransactionV2(ctx, transactionID, actingUserID, businessID) — 3 bosqichli oqim, balansga tegmaydi.
+		AcceptTransactionV2(context.Context, int64, int64, int64) error
+		// CompleteTransactionV2(ctx, payload, actingUserID, businessID)
+		CompleteTransactionV2(context.Context, types.TransactionComplete, int64, int64) error
+		UpdateTransactionV2(context.Context, *store.Transaction, int64, types.TransactionDebtInput) error
 		DeleteTransactionV2(context.Context, int64) error
 		CreateDebtV2(context.Context, *store.Debts) error
 		DebtTransactionV2(context.Context, *store.Debts) error
@@ -66,21 +69,21 @@ type Service struct {
 	}
 
 	Transactions interface {
-		GetByField(context.Context, *string, string, any, types.Pagination) ([]map[string]interface{}, error)
+		GetByField(context.Context, int64, *string, string, any, types.Pagination) ([]map[string]interface{}, error)
 		PerformTransaction(context.Context, *store.Transaction) error
 		CompleteTransaction(context.Context, types.TransactionComplete) error
-		GetByCompanyId(context.Context, int64, types.Pagination) ([]map[string]interface{}, error)
-		GetInfos(ctx context.Context, date string) ([]store.CompanyAmount, error)
-		Archived(context.Context, types.Pagination) ([]map[string]interface{}, error)
+		GetByCompanyId(context.Context, int64, int64, types.Pagination) ([]map[string]interface{}, error)
+		GetInfos(ctx context.Context, businessID int64, date string) ([]store.CompanyAmount, error)
+		Archived(context.Context, int64, types.Pagination) ([]map[string]interface{}, error)
 		Update(context.Context, *store.Transaction) error
 		Delete(context.Context, *int64) error
 	}
 
 	ServiceFees interface {
 		ListFees(context.Context, int64, string, int64, types.Pagination) ([]store.TransactionServiceFee, error)
-		ListFeesAll(context.Context, string, int64, types.Pagination) ([]store.TransactionServiceFee, error)
+		ListFeesAll(context.Context, int64, string, int64, types.Pagination) ([]store.TransactionServiceFee, error)
 		ListSettlements(context.Context, int64, string, types.Pagination) ([]store.ServiceFeeSettlement, error)
-		ListSettlementsAll(context.Context, string, types.Pagination) ([]store.ServiceFeeSettlement, error)
+		ListSettlementsAll(context.Context, int64, string, types.Pagination) ([]store.ServiceFeeSettlement, error)
 		Settle(context.Context, int64, int64, int64, string, string) (*store.ServiceFeeSettlement, error)
 	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/mubashshir3767/currencyExchange/internal/store"
@@ -11,7 +12,17 @@ import (
 // company_balances jadvalidan to'g'ridan-to'g'ri o'qiladi — user balanslaridan
 // MUSTAQIL. Faqat company_balance_records orqali yangilanadi.
 func (app *application) GetCompanyBalancesHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	companyID := getIDFromContext(r)
+	if err := app.authorizeCompany(r, t, companyID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	balances, err := app.store.CompanyBalances.GetByCompanyId(r.Context(), companyID)
 	if err != nil {
 		app.internalServerError(w, r, err)
@@ -26,7 +37,17 @@ func (app *application) GetCompanyBalancesHandler(w http.ResponseWriter, r *http
 // ?currency=USD bilan valyuta bo'yicha filtrlanadi; ?page=&limit= bilan pagination.
 // Har bir qatorda operatsiyani bajargan hodim (user_id + username) ko'rsatiladi.
 func (app *application) GetCompanyBalanceRecordsHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	companyID := getIDFromContext(r)
+	if err := app.authorizeCompany(r, t, companyID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	currency := r.URL.Query().Get("currency")
 	app.LoadPaginationInfo(r, r.Context())
 
@@ -40,13 +61,13 @@ func (app *application) GetCompanyBalanceRecordsHandler(w http.ResponseWriter, r
 	}
 }
 
-// currentCompanyID — JWT'dagi foydalanuvchining kompaniya id'sini qaytaradi.
+// currentCompanyID — joriy foydalanuvchining kompaniya id'si (tenant kontekstidan).
 func (app *application) currentCompanyID(r *http.Request) (int64, error) {
-	user, err := app.currentUser(r)
-	if err != nil {
-		return 0, err
+	t := tenantFrom(r)
+	if t.CompanyID == 0 {
+		return 0, fmt.Errorf("foydalanuvchi hech qanday kompaniyaga biriktirilmagan")
 	}
-	return user.CompanyId, nil
+	return t.CompanyID, nil
 }
 
 func (app *application) currentUser(r *http.Request) (*store.User, error) {
@@ -54,8 +75,9 @@ func (app *application) currentUser(r *http.Request) (*store.User, error) {
 	return app.store.Users.GetById(r.Context(), &userID)
 }
 
+// isAdminUser — business egasi (barcha kompaniyalarni ko'radi).
 func (app *application) isAdminUser(user *store.User) bool {
-	return user != nil && user.Role == 1
+	return user != nil && user.Role == store.ROLE_OWNER
 }
 
 // GetMyCompanyBalancesHandler — joriy foydalanuvchi kompaniyasining balansi (valyutalar bo'yicha).
@@ -128,12 +150,21 @@ func (app *application) CreateMyCompanyBalanceRecordHandler(w http.ResponseWrite
 
 // UpdateMyCompanyBalanceRecordHandler — mavjud kompaniya balansi yozuvini yangilaydi.
 func (app *application) UpdateMyCompanyBalanceRecordHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	var payload store.CompanyBalanceRecord
 	if err := readJSON(w, r, &payload); err != nil {
 		app.badRequestResponse(w, r, err)
 		return
 	}
 	payload.ID = getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "company_balance_records", payload.ID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
 
 	if err := app.service.CompanyBalanceRecords.UpdateCompanyBalanceRecord(r.Context(), payload); err != nil {
 		app.internalServerError(w, r, err)
@@ -147,7 +178,16 @@ func (app *application) UpdateMyCompanyBalanceRecordHandler(w http.ResponseWrite
 
 // DeleteMyCompanyBalanceRecordHandler — kompaniya balansi yozuvini bekor qiladi (rollback).
 func (app *application) DeleteMyCompanyBalanceRecordHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "company_balance_records", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
 
 	if err := app.service.CompanyBalanceRecords.RollbackCompanyBalanceRecord(r.Context(), id); err != nil {
 		app.internalServerError(w, r, err)
@@ -161,7 +201,17 @@ func (app *application) DeleteMyCompanyBalanceRecordHandler(w http.ResponseWrite
 
 // GetCompanyUserActivityHandler — yangi endpoint: balance_records bo'yicha user faolligi.
 func (app *application) GetCompanyUserActivityHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	companyID := getIDFromContext(r)
+	if err := app.authorizeCompany(r, t, companyID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	rows, err := app.store.CompanyBalances.UserActivityByCompany(r.Context(), companyID)
 	if err != nil {
 		app.internalServerError(w, r, err)

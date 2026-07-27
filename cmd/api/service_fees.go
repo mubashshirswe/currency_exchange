@@ -15,15 +15,8 @@ type ServiceFeeSettlePayload struct {
 }
 
 func (app *application) GetTransactionServiceFeesHandler(w http.ResponseWriter, r *http.Request) {
-	user, err := app.currentUser(r)
-	if err != nil {
-		app.internalServerError(w, r, err)
-		return
-	}
-
-	companyID, err := app.currentCompanyID(r)
-	if err != nil {
-		app.internalServerError(w, r, err)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
 		return
 	}
 
@@ -36,14 +29,17 @@ func (app *application) GetTransactionServiceFeesHandler(w http.ResponseWriter, 
 	}
 
 	pagination := app.paginationFromRequest(r, r.Context())
-	var fees []store.TransactionServiceFee
-	if app.isAdminUser(user) {
+	var (
+		fees []store.TransactionServiceFee
+		err  error
+	)
+	if t.IsOwner() {
 		fees, err = app.service.ServiceFees.ListFeesAll(
-			r.Context(), currency, status, pagination,
+			r.Context(), t.BusinessID, currency, status, pagination,
 		)
 	} else {
 		fees, err = app.service.ServiceFees.ListFees(
-			r.Context(), companyID, currency, status, pagination,
+			r.Context(), t.CompanyID, currency, status, pagination,
 		)
 	}
 	if err != nil {
@@ -60,29 +56,25 @@ func (app *application) GetTransactionServiceFeesHandler(w http.ResponseWriter, 
 }
 
 func (app *application) GetServiceFeeSettlementsHandler(w http.ResponseWriter, r *http.Request) {
-	user, err := app.currentUser(r)
-	if err != nil {
-		app.internalServerError(w, r, err)
-		return
-	}
-
-	companyID, err := app.currentCompanyID(r)
-	if err != nil {
-		app.internalServerError(w, r, err)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
 		return
 	}
 
 	currency := strings.TrimSpace(r.URL.Query().Get("currency"))
 	pagination := app.paginationFromRequest(r, r.Context())
 
-	var rows []store.ServiceFeeSettlement
-	if app.isAdminUser(user) {
+	var (
+		rows []store.ServiceFeeSettlement
+		err  error
+	)
+	if t.IsOwner() {
 		rows, err = app.service.ServiceFees.ListSettlementsAll(
-			r.Context(), currency, pagination,
+			r.Context(), t.BusinessID, currency, pagination,
 		)
 	} else {
 		rows, err = app.service.ServiceFees.ListSettlements(
-			r.Context(), companyID, currency, pagination,
+			r.Context(), t.CompanyID, currency, pagination,
 		)
 	}
 	if err != nil {
@@ -105,15 +97,13 @@ func (app *application) CreateServiceFeeSettlementHandler(w http.ResponseWriter,
 		return
 	}
 
-	userID, _ := r.Context().Value(UserKey).(int64)
-	companyID, err := app.currentCompanyID(r)
-	if err != nil {
-		app.internalServerError(w, r, err)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
 		return
 	}
 
 	st, err := app.service.ServiceFees.Settle(
-		r.Context(), companyID, userID,
+		r.Context(), t.CompanyID, t.UserID,
 		payload.Amount, payload.Currency, payload.Details,
 	)
 	if err != nil {

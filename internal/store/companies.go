@@ -6,12 +6,16 @@ import (
 )
 
 type Company struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Details   string `json:"details"`
-	Password  string `json:"password"`
-	CreatedAt string `json:"created_at"`
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Details    string `json:"details"`
+	Password   string `json:"password"`
+	BusinessID int64  `json:"business_id"`
+	CreatedAt  string `json:"created_at"`
 }
+
+// companyColumns — ustunlar tartibi scanCompany bilan bir xil.
+const companyColumns = `id, coalesce(name, ''), coalesce(details, ''), coalesce(password, ''), business_id, created_at`
 
 type CompanyStorage struct {
 	db DBTX
@@ -21,9 +25,24 @@ func NewCompanyStorage(db DBTX) *CompanyStorage {
 	return &CompanyStorage{db: db}
 }
 
+func scanCompany(row rowScanner, company *Company) error {
+	return row.Scan(
+		&company.ID,
+		&company.Name,
+		&company.Details,
+		&company.Password,
+		&company.BusinessID,
+		&company.CreatedAt,
+	)
+}
+
 func (s *CompanyStorage) Create(ctx context.Context, company *Company) error {
-	query := `INSERT INTO companies(name, details, password) VALUES($1, $2, $3) RETURNING id, created_at`
-	err := s.db.QueryRowContext(ctx, query, company.Name, company.Details, company.Password).Scan(
+	if company.BusinessID == 0 {
+		return errors.New("business_id is required")
+	}
+
+	query := `INSERT INTO companies(name, details, password, business_id) VALUES($1, $2, $3, $4) RETURNING id, created_at`
+	err := s.db.QueryRowContext(ctx, query, company.Name, company.Details, company.Password, company.BusinessID).Scan(
 		&company.ID,
 		&company.CreatedAt,
 	)
@@ -35,10 +54,15 @@ func (s *CompanyStorage) Create(ctx context.Context, company *Company) error {
 	return nil
 }
 
+// Update — kompaniya faqat o'z businessi ichida yangilanadi.
 func (s *CompanyStorage) Update(ctx context.Context, company *Company) error {
-	query := `UPDATE companies SET name = $1, details = $2, password = $3 WHERE id $4`
+	if company.BusinessID == 0 {
+		return errors.New("business_id is required")
+	}
 
-	rows, err := s.db.ExecContext(ctx, query, company.Name, company.Details, company.Password, company.ID)
+	query := `UPDATE companies SET name = $1, details = $2, password = $3 WHERE id = $4 AND business_id = $5`
+
+	rows, err := s.db.ExecContext(ctx, query, company.Name, company.Details, company.Password, company.ID, company.BusinessID)
 
 	if err != nil {
 		return err
@@ -56,60 +80,67 @@ func (s *CompanyStorage) Update(ctx context.Context, company *Company) error {
 	return nil
 }
 
-func (s *CompanyStorage) GetAll(ctx context.Context) ([]Company, error) {
-	query := `SELECT * FROM companies`
+// ListByBusiness — businessga tegishli kompaniyalar (jamoalar).
+func (s *CompanyStorage) ListByBusiness(ctx context.Context, businessID int64) ([]Company, error) {
+	query := `SELECT ` + companyColumns + ` FROM companies WHERE business_id = $1 ORDER BY id`
 
 	var companies []Company
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query, businessID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		company := &Company{}
-
-		err := rows.Scan(
-			&company.ID,
-			&company.Name,
-			&company.Details,
-			&company.Password,
-			&company.CreatedAt,
-		)
-
-		if err != nil {
+		company := Company{}
+		if err := scanCompany(rows, &company); err != nil {
 			return nil, err
 		}
-		companies = append(companies, *company)
+		companies = append(companies, company)
 	}
 
-	return companies, nil
+	return companies, rows.Err()
 }
 
 func (s *CompanyStorage) GetById(ctx context.Context, id *int64) (*Company, error) {
-	query := `SELECT * FROM companies WHERE id = $1`
+	query := `SELECT ` + companyColumns + ` FROM companies WHERE id = $1`
 
 	company := &Company{}
-
-	err := s.db.QueryRowContext(ctx, query).Scan(
-		&company.ID,
-		&company.Name,
-		&company.Details,
-		&company.Password,
-		&company.CreatedAt,
-	)
-
-	if err != nil {
+	if err := scanCompany(s.db.QueryRowContext(ctx, query, id), company); err != nil {
 		return nil, err
 	}
 
 	return company, nil
 }
 
-func (s *CompanyStorage) Delete(ctx context.Context, id *int64) error {
-	query := `DELETE FROM companies WHERE id = $1`
+// GetByIdInBusiness — kompaniyani faqat berilgan business ichidan oladi.
+func (s *CompanyStorage) GetByIdInBusiness(ctx context.Context, id int64, businessID int64) (*Company, error) {
+	query := `SELECT ` + companyColumns + ` FROM companies WHERE id = $1 AND business_id = $2`
 
-	rows, err := s.db.ExecContext(ctx, query, id)
+	company := &Company{}
+	if err := scanCompany(s.db.QueryRowContext(ctx, query, id, businessID), company); err != nil {
+		return nil, err
+	}
+
+	return company, nil
+}
+
+// BelongsToBusiness — kompaniya shu businessga tegishlimi (guard uchun arzon tekshiruv).
+func (s *CompanyStorage) BelongsToBusiness(ctx context.Context, id int64, businessID int64) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM companies WHERE id = $1 AND business_id = $2)`
+
+	var ok bool
+	if err := s.db.QueryRowContext(ctx, query, id, businessID).Scan(&ok); err != nil {
+		return false, err
+	}
+
+	return ok, nil
+}
+
+func (s *CompanyStorage) Delete(ctx context.Context, id *int64, businessID int64) error {
+	query := `DELETE FROM companies WHERE id = $1 AND business_id = $2`
+
+	rows, err := s.db.ExecContext(ctx, query, id, businessID)
 
 	if err != nil {
 		return err

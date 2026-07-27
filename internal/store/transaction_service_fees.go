@@ -122,17 +122,17 @@ func (s *TransactionServiceFeeStorage) ListPendingFIFO(
 	return scanServiceFees(rows)
 }
 
-// ListAllPending — barcha kompaniyalardagi status=1 (taqsimlanmagan) yozuvlar.
+// ListAllPending — business ichidagi barcha kompaniyalarda status=1 (taqsimlanmagan) yozuvlar.
 func (s *TransactionServiceFeeStorage) ListAllPending(
-	ctx context.Context, currency string,
+	ctx context.Context, businessID int64, currency string,
 ) ([]TransactionServiceFee, error) {
 	query := `SELECT id, transaction_id, company_id, amount,
 		currency, COALESCE(details, ''), status, created_at
 		FROM transaction_service_fees
-		WHERE status = $1 AND amount > 0`
-	args := []any{ServiceFeeStatusPending}
+		WHERE status = $1 AND amount > 0 AND business_id = $2`
+	args := []any{ServiceFeeStatusPending, businessID}
 	if currency != "" {
-		query += ` AND currency = $2`
+		query += ` AND currency = $3`
 		args = append(args, currency)
 	}
 	query += ` ORDER BY created_at ASC, id ASC`
@@ -208,8 +208,10 @@ func (s *TransactionServiceFeeStorage) ListByCompany(
 	return out, rows.Err()
 }
 
+// ListAll — business ichidagi barcha kompaniyalarning xizmat haqi yozuvlari.
 func (s *TransactionServiceFeeStorage) ListAll(
 	ctx context.Context,
+	businessID int64,
 	currency string,
 	status int64,
 	pagination types.Pagination,
@@ -229,9 +231,9 @@ func (s *TransactionServiceFeeStorage) ListAll(
 		FROM transaction_service_fees f
 		LEFT JOIN transactions t ON t.id = f.transaction_id
 		LEFT JOIN companies c ON c.id = f.company_id
-		WHERE 1=1`
-	args := []any{}
-	argN := 1
+		WHERE f.business_id = $1`
+	args := []any{businessID}
+	argN := 2
 	if currency != "" {
 		query += fmt.Sprintf(" AND f.currency = $%d", argN)
 		args = append(args, currency)
@@ -366,8 +368,10 @@ func (s *ServiceFeeSettlementStorage) ListByCompany(
 	return out, rows.Err()
 }
 
+// ListAll — business ichidagi barcha kompaniyalarning yakunlash yozuvlari.
 func (s *ServiceFeeSettlementStorage) ListAll(
 	ctx context.Context,
+	businessID int64,
 	currency string,
 	pagination types.Pagination,
 ) ([]ServiceFeeSettlement, error) {
@@ -377,10 +381,10 @@ func (s *ServiceFeeSettlementStorage) ListAll(
 		FROM service_fee_settlements s
 		LEFT JOIN users u ON u.id = s.user_id
 		LEFT JOIN companies c ON c.id = s.company_id
-		WHERE 1=1`
-	args := []any{}
+		WHERE s.business_id = $1`
+	args := []any{businessID}
 	if currency != "" {
-		query += " AND s.currency = $1"
+		query += " AND s.currency = $2"
 		args = append(args, currency)
 	}
 	query += " ORDER BY s.created_at DESC"

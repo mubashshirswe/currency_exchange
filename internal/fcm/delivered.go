@@ -13,6 +13,16 @@ import (
 	"github.com/mubashshir3767/currencyExchange/internal/store"
 )
 
+const (
+	// androidChannelID mobile ilovadagi ForegroundNotificationPresenter kanali
+	// bilan bir xil bo'lishi shart, aks holda ovoz ishlamaydi.
+	androidChannelID = "hisobchi_alert_v2"
+	// androidSound — android/app/src/main/res/raw/hisobchi_alert.mp3, kengaytmasiz.
+	androidSound = "hisobchi_alert"
+	// apnsSound — ios/Runner/hisobchi_alert.caf, kengaytmasi bilan.
+	apnsSound = "hisobchi_alert.caf"
+)
+
 type DeliveredNotifier struct {
 	store  store.Storage
 	client *messaging.Client
@@ -69,6 +79,30 @@ func (n *DeliveredNotifier) NotifyNewOrderToCompany(ctx context.Context, company
 	})
 }
 
+// NotifyOrderAccepted — 3 bosqichli oqim: buyurtmani yaratgan kompaniyaga
+// "qabul qilindi" xabari. Bu bosqich balansga ta'sir qilmaydi.
+func (n *DeliveredNotifier) NotifyOrderAccepted(ctx context.Context, companyID int64, txnID int64, phone, details string) {
+	if companyID == 0 {
+		log.Printf("fcm NotifyOrderAccepted: skip companyID=0 txn=%d", txnID)
+		return
+	}
+	tokens, err := n.store.UserSessions.FCMTokensByCompanyID(ctx, companyID)
+	if err != nil {
+		log.Printf("fcm NotifyOrderAccepted: tokens lookup failed company=%d txn=%d: %v", companyID, txnID, err)
+		return
+	}
+	if len(tokens) == 0 {
+		log.Printf("fcm NotifyOrderAccepted: no tokens for company=%d txn=%d", companyID, txnID)
+		return
+	}
+	n.sendMulticast(ctx, tokens, "Buyurtma qabul qilindi", "Buyurtma qabul qilindi, topshirish kutilmoqda", map[string]string{
+		"type":           "transaction_accepted",
+		"transaction_id": strconv.FormatInt(txnID, 10),
+		"phone":          phone,
+		"details":        details,
+	})
+}
+
 func (n *DeliveredNotifier) NotifyDeliveryCompleted(ctx context.Context, deliveredUserID int64, txnID int64, details string) {
 	body := details
 	if body == "" {
@@ -117,6 +151,20 @@ func (n *DeliveredNotifier) sendMulticast(
 		Tokens:       tokens,
 		Notification: &messaging.Notification{Title: title, Body: body},
 		Data:         data,
+		Android: &messaging.AndroidConfig{
+			Priority: "high",
+			Notification: &messaging.AndroidNotification{
+				ChannelID: androidChannelID,
+				Sound:     androidSound,
+				Priority:  messaging.PriorityHigh,
+			},
+		},
+		APNS: &messaging.APNSConfig{
+			Headers: map[string]string{"apns-priority": "10"},
+			Payload: &messaging.APNSPayload{
+				Aps: &messaging.Aps{Sound: apnsSound},
+			},
+		},
 	}
 	br, err := n.client.SendEachForMulticast(ctx, msg)
 	if err != nil {

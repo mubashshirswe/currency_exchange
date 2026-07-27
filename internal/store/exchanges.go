@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -112,17 +113,18 @@ func (s *ExchangeStorage) Update(ctx context.Context, exchange *Exchange) error 
 	return err
 }
 
-func (s *ExchangeStorage) Archived(ctx context.Context, pagination types.Pagination) ([]Exchange, error) {
+func (s *ExchangeStorage) Archived(ctx context.Context, businessID int64, pagination types.Pagination) ([]Exchange, error) {
 	query := `
 				SELECT id, received_money, received_currency, selled_money,
-				selled_currency, profit_amount, profit_currency, user_id, company_id, details, created_at 
-				FROM exchanges WHERE status = $1  	ORDER BY created_at DESC
+				selled_currency, profit_amount, profit_currency, user_id, company_id, details, created_at
+				FROM exchanges WHERE status = $1 AND business_id = $2 	ORDER BY created_at DESC
 	` + fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
 
 	rows, err := s.db.QueryContext(
 		ctx,
 		query,
 		STATUS_ARCHIVED,
+		businessID,
 	)
 	if err != nil {
 		return nil, err
@@ -159,16 +161,74 @@ func (s *ExchangeStorage) Archived(ctx context.Context, pagination types.Paginat
 	return exchanges, nil
 }
 
-func (s *ExchangeStorage) GetByField(ctx context.Context, fieldName string, fieldValue any, pagination types.Pagination) ([]Exchange, error) {
+// scanExchanges — so'rov natijasini Exchange ro'yxatiga o'giradi.
+func (s *ExchangeStorage) scanExchanges(rows *sql.Rows, err error) ([]Exchange, error) {
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+
+	var exchanges []Exchange
+	for rows.Next() {
+		exchange := Exchange{}
+		if err := rows.Scan(
+			&exchange.ID,
+			&exchange.ReceivedMoney,
+			&exchange.ReceivedCurrency,
+			&exchange.SelledMoney,
+			&exchange.SelledCurrency,
+			&exchange.ProfitAmount,
+			&exchange.ProfitCurrency,
+			&exchange.UserId,
+			&exchange.CompanyID,
+			&exchange.Details,
+			&exchange.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		exchange.CreatedAtFormatted = exchange.CreatedAt.In(loc).Format("2006-01-02 15:04:05")
+		exchanges = append(exchanges, exchange)
+	}
+
+	return exchanges, rows.Err()
+}
+
+// ListByFieldInternal — service ichidagi bog'liq yozuvlar uchun (business filtri yo'q).
+func (s *ExchangeStorage) ListByFieldInternal(ctx context.Context, fieldName string, fieldValue any, pagination types.Pagination) ([]Exchange, error) {
+	if err := checkFilterField(exchangeFilterFields, fieldName); err != nil {
+		return nil, err
+	}
+
 	query := `
 				SELECT id, received_money, received_currency, selled_money,
-				selled_currency, profit_amount, profit_currency, user_id, company_id, details, created_at 
-				FROM exchanges WHERE status != $1 AND ` + fmt.Sprintf(" %v = %v ORDER BY created_at DESC OFFSET %v LIMIT %v", fieldName, fieldValue, pagination.Offset, pagination.Limit)
+				selled_currency, profit_amount, profit_currency, user_id, company_id, details, created_at
+				FROM exchanges WHERE status != $1 AND ` + fieldName + ` = $2` +
+		fmt.Sprintf(" ORDER BY created_at DESC OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+
+	rows, err := s.db.QueryContext(ctx, query, STATUS_ARCHIVED, fieldValue)
+	return s.scanExchanges(rows, err)
+}
+
+func (s *ExchangeStorage) GetByField(ctx context.Context, businessID int64, fieldName string, fieldValue any, pagination types.Pagination) ([]Exchange, error) {
+	if err := checkFilterField(exchangeFilterFields, fieldName); err != nil {
+		return nil, err
+	}
+
+	query := `
+				SELECT id, received_money, received_currency, selled_money,
+				selled_currency, profit_amount, profit_currency, user_id, company_id, details, created_at
+				FROM exchanges WHERE status != $1 AND business_id = $2 AND ` + fieldName + ` = $3` +
+		fmt.Sprintf(" ORDER BY created_at DESC OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
 
 	rows, err := s.db.QueryContext(
 		ctx,
 		query,
 		STATUS_ARCHIVED,
+		businessID,
+		fieldValue,
 	)
 	if err != nil {
 		return nil, err

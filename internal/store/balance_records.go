@@ -118,10 +118,14 @@ func (s *BalanceRecordStorage) Update(ctx context.Context, balanceRecord *Balanc
 	return err
 }
 
-func (s *BalanceRecordStorage) GetByFieldAndDate(ctx context.Context, fieldName string, from, to *string, fieldValue any, pagination types.Pagination) ([]BalanceRecord, error) {
+func (s *BalanceRecordStorage) GetByFieldAndDate(ctx context.Context, businessID int64, fieldName string, from, to *string, fieldValue any, pagination types.Pagination) ([]BalanceRecord, error) {
+	if err := checkFilterField(balanceRecordFilterFields, fieldName); err != nil {
+		return nil, err
+	}
+
 	query := `
 				SELECT id, amount, user_id, balance_id, company_id, transaction_id, debt_id, exchange_id, details, currency, type, created_at
-				FROM balance_records WHERE ` + fieldName + ` = $1 AND status != $2  AND amount != 0 AND created_at BETWEEN $3 AND $4 	ORDER BY created_at DESC
+				FROM balance_records WHERE ` + fieldName + ` = $1 AND status != $2  AND amount != 0 AND created_at BETWEEN $3 AND $4 AND business_id = $5 	ORDER BY created_at DESC
 	` + fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
 
 	rows, err := s.db.QueryContext(
@@ -131,6 +135,7 @@ func (s *BalanceRecordStorage) GetByFieldAndDate(ctx context.Context, fieldName 
 		STATUS_ARCHIVED,
 		from,
 		to,
+		businessID,
 	)
 
 	if err != nil {
@@ -141,10 +146,36 @@ func (s *BalanceRecordStorage) GetByFieldAndDate(ctx context.Context, fieldName 
 	return s.FetchDataFromQuery(rows)
 }
 
-func (s *BalanceRecordStorage) GetByField(ctx context.Context, fieldName string, fieldValue any, pagination types.Pagination) ([]BalanceRecord, error) {
+// ListByFieldInternal — service ichidagi bog'liq yozuvlarni topish uchun (rollback,
+// update). Business filtri yo'q: chaqiruvchi allaqachon avtorizatsiya qilingan
+// yozuvning id'si bilan ishlaydi, tashqi kirish nuqtasi emas.
+func (s *BalanceRecordStorage) ListByFieldInternal(ctx context.Context, fieldName string, fieldValue any, pagination types.Pagination) ([]BalanceRecord, error) {
+	if err := checkFilterField(balanceRecordFilterFields, fieldName); err != nil {
+		return nil, err
+	}
+
 	query := `
 				SELECT id, amount, user_id, balance_id, company_id, transaction_id, debt_id, exchange_id, details, currency, type, created_at
-				FROM balance_records WHERE ` + fieldName + ` = $1 AND status != $2 AND amount != 0   	ORDER BY created_at DESC
+				FROM balance_records WHERE ` + fieldName + ` = $1 AND status != $2 AND amount != 0 	ORDER BY created_at DESC
+	` + fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+
+	rows, err := s.db.QueryContext(ctx, query, fieldValue, STATUS_ARCHIVED)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return s.FetchDataFromQuery(rows)
+}
+
+func (s *BalanceRecordStorage) GetByField(ctx context.Context, businessID int64, fieldName string, fieldValue any, pagination types.Pagination) ([]BalanceRecord, error) {
+	if err := checkFilterField(balanceRecordFilterFields, fieldName); err != nil {
+		return nil, err
+	}
+
+	query := `
+				SELECT id, amount, user_id, balance_id, company_id, transaction_id, debt_id, exchange_id, details, currency, type, created_at
+				FROM balance_records WHERE ` + fieldName + ` = $1 AND status != $2 AND amount != 0 AND business_id = $3 	ORDER BY created_at DESC
 	` + fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
 
 	rows, err := s.db.QueryContext(
@@ -152,6 +183,7 @@ func (s *BalanceRecordStorage) GetByField(ctx context.Context, fieldName string,
 		query,
 		fieldValue,
 		STATUS_ARCHIVED,
+		businessID,
 	)
 
 	if err != nil {
@@ -162,15 +194,16 @@ func (s *BalanceRecordStorage) GetByField(ctx context.Context, fieldName string,
 	return s.FetchDataFromQuery(rows)
 }
 
-func (s *BalanceRecordStorage) Archived(ctx context.Context, pagination types.Pagination) ([]BalanceRecord, error) {
+func (s *BalanceRecordStorage) Archived(ctx context.Context, businessID int64, pagination types.Pagination) ([]BalanceRecord, error) {
 	query := `
 				SELECT id, amount, user_id, balance_id, company_id, transaction_id, debt_id, exchange_id, details, currency, type, created_at
-				FROM balance_records WHERE status = $1 AND amount != 0  	ORDER BY created_at DESC
+				FROM balance_records WHERE status = $1 AND amount != 0 AND business_id = $2 	ORDER BY created_at DESC
 	` + fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
 	rows, err := s.db.QueryContext(
 		ctx,
 		query,
 		STATUS_ARCHIVED,
+		businessID,
 	)
 
 	if err != nil {

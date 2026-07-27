@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/mubashshir3767/currencyExchange/internal/store"
@@ -28,7 +27,20 @@ func (app *application) CreateBalanceHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	user, _ := app.store.Users.GetById(context.Background(), &payload.UserId)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+	if err := app.authorizeUser(r, t, payload.UserId); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	user, err := app.store.Users.GetByIdInBusiness(r.Context(), payload.UserId, t.BusinessID)
+	if err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
 
 	balance := &store.Balance{
 		Balance:   payload.Balance,
@@ -51,7 +63,17 @@ func (app *application) CreateBalanceHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (app *application) GetBalanceByIdHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "balances", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	balance, err := app.store.Balances.GetById(r.Context(), &id)
 	if err != nil {
 		app.internalServerError(w, r, err)
@@ -65,7 +87,17 @@ func (app *application) GetBalanceByIdHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (app *application) GetBalanceByUserIdHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
+	if err := app.authorizeUser(r, t, id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	balance, err := app.store.Balances.GetByUserId(r.Context(), &id)
 	if err != nil {
 		app.internalServerError(w, r, err)
@@ -79,8 +111,18 @@ func (app *application) GetBalanceByUserIdHandler(w http.ResponseWriter, r *http
 }
 
 func (app *application) GetBalanceByCompanyIdHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
-	balances, err := app.service.Balances.GetByCompanyId(r.Context(), id)
+	if err := app.authorizeCompany(r, t, id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	balances, err := app.service.Balances.GetByCompanyId(r.Context(), t.BusinessID, id)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -93,7 +135,12 @@ func (app *application) GetBalanceByCompanyIdHandler(w http.ResponseWriter, r *h
 }
 
 func (app *application) GetAllBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	balance, err := app.service.Balances.GetAll(r.Context())
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	balance, err := app.service.Balances.GetAll(r.Context(), t.BusinessID)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -117,7 +164,19 @@ func (app *application) UpdateBalanceHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "balances", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	balance := &store.Balance{
+		ID:       id,
 		Balance:  payload.Balance,
 		UserId:   payload.UserId,
 		InOutLay: payload.InOutLay,
@@ -136,7 +195,17 @@ func (app *application) UpdateBalanceHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (app *application) DeleteBalanceHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
 	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "balances", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	if err := app.store.Balances.Delete(r.Context(), id); err != nil {
 		app.internalServerError(w, r, err)
 		return

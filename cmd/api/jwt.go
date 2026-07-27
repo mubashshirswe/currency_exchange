@@ -10,6 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/mubashshir3767/currencyExchange/internal/env"
+	"github.com/mubashshir3767/currencyExchange/internal/store"
 )
 
 type contextkey string
@@ -80,6 +81,12 @@ type tokenClaims struct {
 	UserID    string `json:"userID"`
 	ExpiredAt int64  `json:"expiredAt,omitempty"`
 
+	// Tenant ma'lumoti mijoz uchun (business => company => user). Server
+	// avtorizatsiyada bularga tayanmaydi — DB'dagi user manba hisoblanadi.
+	BusinessID int64 `json:"businessID,omitempty"`
+	CompanyID  int64 `json:"companyID,omitempty"`
+	Role       int64 `json:"role,omitempty"`
+
 	jwt.RegisteredClaims
 }
 
@@ -115,15 +122,23 @@ func (c tokenClaims) userID() (int64, error) {
 }
 
 func signToken(cfg *tokenConfig, userID int64, tokenType string, ttl time.Duration) (string, error) {
+	return signTenantToken(cfg, &store.User{ID: userID}, tokenType, ttl)
+}
+
+// signTenantToken — tokenga tenant (business/company/role) claim'larini ham yozadi.
+func signTenantToken(cfg *tokenConfig, user *store.User, tokenType string, ttl time.Duration) (string, error) {
 	now := time.Now()
 	expiresAt := now.Add(ttl)
 
 	claims := tokenClaims{
-		Type:      tokenType,
-		UserID:    strconv.FormatInt(userID, 10),
-		ExpiredAt: expiresAt.Unix(),
+		Type:       tokenType,
+		UserID:     strconv.FormatInt(user.ID, 10),
+		ExpiredAt:  expiresAt.Unix(),
+		BusinessID: user.BusinessId,
+		CompanyID:  user.CompanyId,
+		Role:       user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   strconv.FormatInt(userID, 10),
+			Subject:   strconv.FormatInt(user.ID, 10),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 		},
@@ -135,14 +150,19 @@ func signToken(cfg *tokenConfig, userID int64, tokenType string, ttl time.Durati
 // issueTokenPair mints a short lived access token plus the refresh token the
 // client uses to renew it without asking for credentials again.
 func issueTokenPair(userID int64) (accessToken string, refreshToken string, err error) {
+	return issueUserTokenPair(&store.User{ID: userID})
+}
+
+// issueUserTokenPair — tenant claim'lari bilan token juftligi.
+func issueUserTokenPair(user *store.User) (accessToken string, refreshToken string, err error) {
 	cfg := tokens()
 
-	accessToken, err = signToken(cfg, userID, accessTokenType, cfg.accessTTL)
+	accessToken, err = signTenantToken(cfg, user, accessTokenType, cfg.accessTTL)
 	if err != nil {
 		return "", "", err
 	}
 
-	refreshToken, err = signToken(cfg, userID, refreshTokenType, cfg.refreshTTL)
+	refreshToken, err = signTenantToken(cfg, user, refreshTokenType, cfg.refreshTTL)
 	if err != nil {
 		return "", "", err
 	}

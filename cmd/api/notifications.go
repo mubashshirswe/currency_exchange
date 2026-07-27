@@ -17,7 +17,11 @@ type sendUserNotificationPayload struct {
 // SendUserNotificationHandler — userning barcha FCM tokenlariga push yuboradi.
 // user_id berilmasa joriy foydalanuvchiga; boshqa user uchun faqat admin.
 func (app *application) SendUserNotificationHandler(w http.ResponseWriter, r *http.Request) {
-	callerID := r.Context().Value(UserKey).(int64)
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+	callerID := t.UserID
 
 	var payload sendUserNotificationPayload
 	if err := readJSON(w, r, &payload); err != nil {
@@ -32,14 +36,14 @@ func (app *application) SendUserNotificationHandler(w http.ResponseWriter, r *ht
 	targetUserID := callerID
 	if payload.UserID != nil {
 		targetUserID = *payload.UserID
+		// Boshqa userga push — faqat business egasi va faqat o'z businessi ichida.
 		if targetUserID != callerID {
-			caller, err := app.currentUser(r)
-			if err != nil {
-				app.internalServerError(w, r, err)
+			if !t.IsOwner() {
+				app.forbiddenResponse(w, r, errors.New("admin required"))
 				return
 			}
-			if !app.isAdminUser(caller) {
-				app.unauthorizedErrorResponse(w, r, errors.New("admin required"))
+			if err := app.authorizeUser(r, t, targetUserID); err != nil {
+				app.handleScopeError(w, r, err)
 				return
 			}
 		}
