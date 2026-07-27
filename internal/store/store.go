@@ -179,6 +179,7 @@ type Storage struct {
 		GetById(context.Context, *int64) (*Company, error)
 		GetByIdInBusiness(context.Context, int64, int64) (*Company, error)
 		BelongsToBusiness(context.Context, int64, int64) (bool, error)
+		InUse(context.Context, int64) (bool, error)
 		Update(context.Context, *Company) error
 		Delete(context.Context, *int64, int64) error
 	}

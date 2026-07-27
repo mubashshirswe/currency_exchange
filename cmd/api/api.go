@@ -203,11 +203,15 @@ func (app *application) mount() *chi.Mux {
 				})
 			})
 
-			// Kompaniyalar — faqat o'qish: ochish/o'chirish admin API'da.
+			// Kompaniyalar — o'qish hamma uchun, CRUD faqat business egasi uchun
+			// (guard handler ichida: requireOwner).
 			r.Route("/companies", func(r chi.Router) {
 				r.Get("/all", app.GetAllCompanyHandler)
+				r.Post("/", app.CreateCompanyHandler)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", app.GetCompanyByIdHandler)
+					r.Put("/", app.UpdateCompanyHandler)
+					r.Delete("/", app.DeleteCompanyHandler)
 					r.Get("/balances", app.GetCompanyBalancesHandler)
 					r.Get("/balance-records", app.GetCompanyBalanceRecordsHandler)
 					r.Get("/users/activity", app.GetCompanyUserActivityHandler)

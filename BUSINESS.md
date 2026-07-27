@@ -60,14 +60,13 @@ make migrate-up
 | `ROLE_STAFF` | 2 | Hodim: faqat o'z kompaniyasi |
 
 Faqat ega qila oladi: hodim yaratish/o'chirish, rol berish, boshqa userga push
-yuborish. **Kompaniya ochish ega uchun ham yopiq** — u platforma admin API'sida
-(quyida) bajariladi.
+yuborish va **o'z businessi ichida kompaniya (jamoa) ochish/yangilash/o'chirish**.
 
 ## API o'zgarishlari
 
-Business va kompaniya **faqat platforma REST API'si orqali** ochiladi
-(`X-Admin-Key`). Mijoz ilovasida bunday oqim yo'q; business egasi ham kompaniya
-qo'sha olmaydi — u faqat o'z businessiga hodim qo'shadi.
+Business **faqat platforma REST API'si orqali** ochiladi (`X-Admin-Key`).
+Kompaniya ikki joyda boshqariladi: platforma admin API'si (istalgan business
+uchun) va business egasining tokeni (faqat o'z businessi ichida).
 
 ### Platforma admin API (`X-Admin-Key: $ADMIN_API_KEY`)
 
@@ -150,9 +149,30 @@ curl -X PUT https://api.example.com/api/v1/user/business/settings \
 | POST | `/api/v1/users/register`, `/api/v1/user/` | Business egasi (token) — hodim qo'shish |
 | GET | `/api/v1/user/business` | Token — o'z businessi |
 | GET | `/api/v1/user/business/team` | Token — jamoalar (hodimga faqat o'z kompaniyasi) |
-| GET | `/api/v1/user/companies/all`, `/{id}` | Token — faqat o'qish |
+| GET | `/api/v1/user/companies/all`, `/{id}` | Token — o'qish (hodim ham) |
+| POST | `/api/v1/user/companies` | Faqat business egasi — yangi kompaniya |
+| PUT | `/api/v1/user/companies/{id}` | Faqat business egasi |
+| DELETE | `/api/v1/user/companies/{id}` | Faqat business egasi, bo'sh kompaniya |
 
-Kompaniya `POST/PUT/DELETE` yo'llari `/user/companies` dan olib tashlandi.
+Egasining kompaniya CRUD'i:
+
+- `business_id` mijozdan olinmaydi — doim tokendagi businessdan qo'yiladi,
+  shuning uchun begona businessga kompaniya qo'shib bo'lmaydi;
+- yaratishda kompaniya + `company_balances` + `soft_balances` standart qatorlari
+  bitta tranzaksiyada ochiladi (`USD`, `SUM`);
+- yangilashda bo'sh yuborilgan `name`/`password` eskisicha qoladi;
+- o'chirish faqat **bo'sh** kompaniya uchun: faol hodim, tranzaksiya, ayirboshlash
+  yoki qarzdor bo'lsa `400 KOMPANIYADA HODIM YOKI OPERATSIYA BOR ...`, o'zi
+  turgan kompaniyani o'chirsa `400 O'ZINGIZ TURGAN KOMPANIYANI O'CHIRIB
+  BO'LMAYDI`. Bu cheklov kaskadli `ON DELETE CASCADE` orqali balans va xizmat
+  haqi tarixi yo'qolib ketmasligi uchun.
+
+```bash
+# Ega o'z businessida yangi jamoa ochadi
+curl -X POST https://api.example.com/api/v1/user/companies \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name": "Yunusobod filiali", "details": "Toshkent", "password": ""}'
+```
 
 ### Mobil uchun muhim
 

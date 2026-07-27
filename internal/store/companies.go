@@ -137,6 +137,26 @@ func (s *CompanyStorage) BelongsToBusiness(ctx context.Context, id int64, busine
 	return ok, nil
 }
 
+// InUse — kompaniyada faol hodim yoki moliyaviy iz bormi. O'chirish paytida
+// kompaniya balanslari, soft balanslari va xizmat haqi yozuvlari kaskad bilan
+// yo'qoladi, shuning uchun bo'sh bo'lmagan kompaniya o'chirilmaydi.
+// O'chirilgan hodimning telefoni bo'shatiladi (users.Delete), shuning uchun ular
+// hisobga olinmaydi.
+func (s *CompanyStorage) InUse(ctx context.Context, id int64) (bool, error) {
+	query := `SELECT
+		EXISTS(SELECT 1 FROM users WHERE company_id = $1 AND phone <> '')
+		OR EXISTS(SELECT 1 FROM transactions WHERE received_company_id = $1 OR delivered_company_id = $1)
+		OR EXISTS(SELECT 1 FROM exchanges WHERE company_id = $1)
+		OR EXISTS(SELECT 1 FROM debtors WHERE company_id = $1)`
+
+	var inUse bool
+	if err := s.db.QueryRowContext(ctx, query, id).Scan(&inUse); err != nil {
+		return false, err
+	}
+
+	return inUse, nil
+}
+
 func (s *CompanyStorage) Delete(ctx context.Context, id *int64, businessID int64) error {
 	query := `DELETE FROM companies WHERE id = $1 AND business_id = $2`
 
