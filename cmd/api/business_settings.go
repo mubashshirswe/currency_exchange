@@ -12,7 +12,7 @@ import (
 
 // BusinessSettingsPayload — business sozlamalarini yangilash.
 // transaction_flow: 1 = oddiy (yaratish => topshirish),
-//                   2 = 3 bosqich (yaratish => qabul qilish => topshirish).
+// 2 = 3 bosqich (yaratish => qabul qilish => topshirish).
 type BusinessSettingsPayload struct {
 	TransactionFlow int64 `json:"transaction_flow"`
 }
