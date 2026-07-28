@@ -31,6 +31,7 @@ type Service struct {
 
 	Debtors interface {
 		GetByCompanyId(context.Context, int64, int64, *string, *string, types.Pagination) ([]map[string]interface{}, error)
+		SearchByName(ctx context.Context, businessID, companyID int64, query, currency string, limit int) ([]map[string]interface{}, error)
 	}
 
 	BalanceRecords interface {

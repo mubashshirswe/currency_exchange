@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/mubashshir3767/currencyExchange/internal/store"
 	"github.com/mubashshir3767/currencyExchange/internal/types"
@@ -314,6 +315,47 @@ func (app *application) GetDebtorsByCompanyIdHandler(w http.ResponseWriter, r *h
 	}
 
 	debtors, err := app.service.Debtors.GetByCompanyId(r.Context(), t.BusinessID, companyID, textSeach, dateSearch, app.Pagination)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, debtors); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+}
+
+// SearchDebtorsHandler — GET /debtors/company/{id}/search?q=<ism>&currency=<val>&limit=<n>
+// Transaction'da qarz yozishdan oldin ism bo'yicha mavjud qarzdorlarni taklif qiladi.
+// Imlo xatolariga chidamli (trigram similarity), natija o'xshashlik bo'yicha saralanadi.
+// Bo'sh ro'yxat qaytsa — bunday qarzdor yo'q, transaction yangi qarzdor ochadi.
+func (app *application) SearchDebtorsHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	companyID := getIDFromContext(r)
+	if err := app.authorizeCompany(r, t, companyID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		query = r.URL.Query().Get("full_name")
+	}
+	currency := r.URL.Query().Get("currency")
+
+	limit := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			limit = parsed
+		}
+	}
+
+	debtors, err := app.service.Debtors.SearchByName(r.Context(), t.BusinessID, companyID, query, currency, limit)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return

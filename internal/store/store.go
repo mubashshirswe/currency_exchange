@@ -43,6 +43,7 @@ type Storage struct {
 		GetById(context.Context, int64) (*Debtors, error)
 		GetByUserId(context.Context, int64, types.Pagination) ([]Debtors, error)
 		GetByCompanyId(context.Context, int64, *string, *string, types.Pagination) ([]Debtors, error)
+		SearchByName(ctx context.Context, companyID int64, query, currency string, minScore float64, limit int) ([]DebtorMatch, error)
 		GetByBalanceInfo(context.Context, int64) ([]map[string]interface{}, error)
 		Delete(context.Context, int64) error
 	}

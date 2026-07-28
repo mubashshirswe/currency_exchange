@@ -171,6 +171,7 @@ func (app *application) mount() *chi.Mux {
 				r.With(app.DedupCreateMiddleware).Post("/create/v2", app.CreateDebtorsV2Handler)
 				r.With(app.DedupCreateMiddleware).Post("/transaction/v2", app.CreateDebtorTransactionV2Handler)
 				r.Get("/company/{id}", app.GetDebtorsByCompanyIdHandler)
+				r.Get("/company/{id}/search", app.SearchDebtorsHandler)
 				r.Get("/info/{id}", app.GetDebtorsTotalBalanceInfo)
 				r.Delete("/{id}", app.DeleteDebtorsHandler)
 

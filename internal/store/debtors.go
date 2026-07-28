@@ -535,6 +535,79 @@ func (s *DebtorsStorage) GetByCompanyNameAndCurrency(
 	return credit, nil
 }
 
+// DebtorMatch — ism bo'yicha fuzzy qidiruv natijasi: qarzdor + o'xshashlik darajasi.
+type DebtorMatch struct {
+	Debtors
+	Score float64 `json:"score"`
+}
+
+// SearchByName — kompaniya ichida ismi kiritilgan matnga o'xshash qarzdorlarni topadi.
+// pg_trgm similarity() ishlatiladi, shuning uchun harflar xato yozilsa ham ("Aliev"
+// o'rniga "Aliyev") mos qarzdor chiqadi. Telefon bo'yicha ham qidiriladi.
+// currency bo'sh bo'lmasa, faqat o'sha valyutali qarzdorlar qaytariladi.
+// Natija o'xshashlik bo'yicha kamayish tartibida keladi.
+func (s *DebtorsStorage) SearchByName(
+	ctx context.Context,
+	companyId int64,
+	query, currency string,
+	minScore float64,
+	limit int,
+) ([]DebtorMatch, error) {
+	sqlQuery := `
+				SELECT id, COALESCE(balance, 0), COALESCE(currency, ''), COALESCE(user_id, 0),
+				       COALESCE(phone, ''), company_id, created_at, COALESCE(full_name, ''),
+				       GREATEST(
+				           similarity(LOWER(COALESCE(full_name, '')), LOWER($2)),
+				           CASE WHEN LOWER(COALESCE(full_name, '')) LIKE '%' || LOWER($2) || '%' THEN 0.9 ELSE 0 END,
+				           CASE WHEN COALESCE(phone, '') <> '' AND phone LIKE '%' || $2 || '%' THEN 0.9 ELSE 0 END
+				       ) AS score
+				FROM debtors
+				WHERE company_id = $1
+				  AND ($3 = '' OR currency = $3)
+				  AND (
+				        similarity(LOWER(COALESCE(full_name, '')), LOWER($2)) >= $4
+				        OR LOWER(COALESCE(full_name, '')) LIKE '%' || LOWER($2) || '%'
+				        OR (COALESCE(phone, '') <> '' AND phone LIKE '%' || $2 || '%')
+				      )
+				ORDER BY score DESC, created_at DESC
+				LIMIT $5
+			`
+
+	rows, err := s.db.QueryContext(ctx, sqlQuery, companyId, query, currency, minScore, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+	matches := make([]DebtorMatch, 0, limit)
+
+	for rows.Next() {
+		var m DebtorMatch
+		if err := rows.Scan(
+			&m.ID,
+			&m.Balance,
+			&m.Currency,
+			&m.UserID,
+			&m.Phone,
+			&m.CompanyID,
+			&m.CreatedAt,
+			&m.FullName,
+			&m.Score,
+		); err != nil {
+			return nil, err
+		}
+		m.CreatedAtFormatted = m.CreatedAt.In(loc).Format("2006-01-02 15:04:05")
+		matches = append(matches, m)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return matches, nil
+}
+
 func (s *DebtorsStorage) Update(ctx context.Context, credit *Debtors) error {
 	query := `
 				UPDATE debtors SET balance = $1, currency = $2, user_id = $3, phone = $4, full_name = $5,
