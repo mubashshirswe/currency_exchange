@@ -33,10 +33,10 @@ type Transaction struct {
 	// ServiceFeeCompanyId — xizmat haqini olgan kompaniya (transaction_service_fees.company_id).
 	// Tranzaksiyaning ikkala tomoni ham buni ko'radi.
 	ServiceFeeCompanyId *int64 `json:"service_fee_company_id"`
-	Phone              string                    `json:"phone"`
-	Details            string                    `json:"details"`
-	Status             int64                     `json:"status"`
-	Type               int64                     `json:"type"`
+	Phone               string `json:"phone"`
+	Details             string `json:"details"`
+	Status              int64  `json:"status"`
+	Type                int64  `json:"type"`
 
 	// Qabul qilish bosqichi (faqat 3 bosqichli oqimda to'ladi) — balansga ta'sir qilmaydi.
 	AcceptedUserId      *int64     `json:"accepted_user_id"`
