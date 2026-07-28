@@ -16,7 +16,7 @@ import (
 const (
 	// androidChannelID mobile ilovadagi ForegroundNotificationPresenter kanali
 	// bilan bir xil bo'lishi shart, aks holda ovoz ishlamaydi.
-	androidChannelID = "hisobchi_alert_v2"
+	androidChannelID = "hisobchi_alert_v3"
 	// androidSound — android/app/src/main/res/raw/hisobchi_alert.mp3, kengaytmasiz.
 	androidSound = "hisobchi_alert"
 	// apnsSound — ios/Runner/hisobchi_alert.caf, kengaytmasi bilan.

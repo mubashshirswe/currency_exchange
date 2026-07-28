@@ -133,6 +133,23 @@ SOZLAMALARDA YOQILMAGAN`.
 Ro'yxat javoblarida qo'shimcha maydonlar: `accepted_user_id`, `accepted_user`,
 `accepted_company_id`, `accepted_at`, `is_accepted`.
 
+## Xizmat haqi ko'rinishi
+
+Xizmat haqi tranzaksiyaning **ikkala tomoniga ham** ko'rinadi: Toshkent olgan
+xizmat haqi Namangan ro'yxatida ham, Namangan olgani Toshkentda ham chiqadi
+(avval hodimga faqat o'z kompaniyasi olgan haq ko'rinardi, qolgani `0` bo'lib
+maskalanardi).
+
+Tranzaksiya ro'yxatlaridagi maydonlar (`GetByField`, `Archived`,
+`GetByCompanyId`): `service_fee_amount`, `service_fee_currency`,
+`service_fee_details` va kim olgani — `service_fee_company_id`,
+`service_fee_company`. Kompaniya `transaction_service_fees.company_id` dan
+olinadi; eski yozuvda u bo'lmasa, yaratishda kiritilgan bo'lsa qabul qiluvchi,
+yakunlashda kiritilgan bo'lsa yetkazuvchi kompaniya hisoblanadi.
+
+Info karta (`GetInfos`) avvalgidek qoladi: hodim faqat o'z kompaniyasining
+xizmat haqi summasini ko'radi.
+
 ```bash
 # 3 bosqichli oqimni yoqish
 curl -X PUT https://api.example.com/api/v1/user/business/settings \
@@ -146,6 +163,8 @@ curl -X PUT https://api.example.com/api/v1/user/business/settings \
 |---|---|---|
 | POST | `/api/v1/users/login` | Ochiq |
 | POST | `/api/v1/users/refresh` | Ochiq |
+| GET | `/api/v1/users/businesses` | Token — parolsiz o'tish mumkin bo'lgan businesslar |
+| POST | `/api/v1/users/switch-business` | Token — boshqa businessga o'tish |
 | POST | `/api/v1/users/register`, `/api/v1/user/` | Business egasi (token) — hodim qo'shish |
 | GET | `/api/v1/user/business` | Token — o'z businessi |
 | GET | `/api/v1/user/business/team` | Token — jamoalar (hodimga faqat o'z kompaniyasi) |
@@ -178,9 +197,11 @@ curl -X POST https://api.example.com/api/v1/user/companies \
 
 - `POST /api/v1/users/register` endi **token talab qiladi** va faqat business
   egasi chaqira oladi.
-- `POST /api/v1/users/login` — telefon business ichida unikal. Bir xil telefon
-  bir nechta businessda bo'lsa javob `400` bo'ladi va so'rovga `business_id`
-  qo'shiladi:
+- `POST /api/v1/users/login` — telefon business ichida unikal, businesslar
+  bo'ylab takrorlanishi mumkin. Bir odam bir nechta businessda bo'lsa login
+  **xato bermaydi**: birinchi business ochiladi, qolganlari javobdagi
+  `businesses` ro'yxatida qaytadi. So'rovga ixtiyoriy `business_id` qo'shilsa
+  to'g'ridan-to'g'ri o'sha business ochiladi:
   ```json
   { "phone": "90 123 45 67", "password": "...", "business_id": 3 }
   ```
@@ -190,3 +211,46 @@ curl -X POST https://api.example.com/api/v1/user/companies \
 - "Admin" (`role=1`) endi **platforma bo'ylab emas, business bo'ylab** hamma
   narsani ko'radi: xizmat haqi ro'yxatlari, info karta, arxiv — barchasi
   business bilan chegaralangan.
+
+## Business almashtirish (parolsiz)
+
+Bir odam bir nechta businessda ishlashi mumkin: har business uchun **alohida
+`users` qatori**, lekin telefon bir xil. Login/refresh/switch javoblarida shu
+odam kira oladigan businesslar ro'yxati qaytadi:
+
+```json
+{
+  "token": "...", "refresh_token": "...", "user": { "id": 12, "business_id": 1 },
+  "businesses": [
+    {"business_id": 1, "business_name": "Hisobchi LLC", "business_status": 1,
+     "user_id": 12, "username": "Ali", "company_id": 4, "role": 1},
+    {"business_id": 3, "business_name": "Sarrof MChJ", "business_status": 1,
+     "user_id": 47, "username": "Ali", "company_id": 9, "role": 2}
+  ]
+}
+```
+
+Almashish parol so'ramaydi — yangi token juftligi beriladi:
+
+```bash
+curl -X POST https://api.example.com/api/v1/users/switch-business \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"business_id": 3}'
+```
+
+Mijoz eski token/refresh tokenni tashlab, javobdagi yangilariga o'tadi.
+
+**Ruxsat qoidasi:** almashish faqat **bir xil telefon + bir xil parol**ga ega
+qatorlar orasida mumkin. Ro'yxat har safar DB'dan jonli hisoblanadi
+(`LoginCandidates(phone, password)`), shuning uchun:
+
+- boshqa odamning businessi ro'yxatga tushmaydi (telefon boshqa);
+- bir businessdagi parol o'zgartirilsa, o'sha business ro'yxatdan darhol
+  chiqadi — eski token bilan ham o'tib bo'lmaydi;
+- ruxsatsiz `business_id` uchun `403 BU BUSINESSGA RUXSAT YO'Q`.
+
+Ya'ni parollarni turli businessda **bir xil saqlash** shart: farqli parol =
+alohida hisob, almashish yo'q, qayta login qilinadi.
+
+O'chirilgan userlarning telefoni bo'sh (`phone = ''`) bo'lgani uchun ular hech
+qachon almashish ro'yxatiga tushmaydi.

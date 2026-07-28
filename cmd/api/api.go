@@ -68,6 +68,11 @@ func (app *application) mount() *chi.Mux {
 		// Hodim yaratish business ichida bo'ladi — business egasining tokeni.
 		r.With(app.JWTUserMiddleware()).Post("/users/register", app.CreateUserHandler)
 
+		// Bir telefon bir nechta businessda bo'lsa: ro'yxatni ko'rish va
+		// parol qayta terilmasdan boshqa businessga o'tish.
+		r.With(app.JWTUserMiddleware()).Get("/users/businesses", app.ListMyBusinessesHandler)
+		r.With(app.JWTUserMiddleware()).Post("/users/switch-business", app.SwitchBusinessHandler)
+
 		// Platforma operatori (X-Admin-Key): business va kompaniya faqat shu
 		// yerdan ochiladi, mijoz ilovasida bunday oqim yo'q.
 		r.With(app.PlatformAdminMiddleware).Route("/admin", func(r chi.Router) {

@@ -30,6 +30,9 @@ type Transaction struct {
 	ServiceFeeAmount   int64                     `json:"service_fee_amount"`
 	ServiceFeeCurrency string                    `json:"service_fee_currency"`
 	ServiceFeeDetails  string                    `json:"service_fee_details"`
+	// ServiceFeeCompanyId — xizmat haqini olgan kompaniya (transaction_service_fees.company_id).
+	// Tranzaksiyaning ikkala tomoni ham buni ko'radi.
+	ServiceFeeCompanyId *int64 `json:"service_fee_company_id"`
 	Phone              string                    `json:"phone"`
 	Details            string                    `json:"details"`
 	Status             int64                     `json:"status"`
@@ -49,7 +52,8 @@ type Transaction struct {
 // Tartibi GetById va ConvertRowsToObject dagi Scan tartibi bilan bir xil.
 const transactionColumns = `id, number, delivered_number, service_fee_amount, service_fee_currency, service_fee_details,
 			received_incomes, delivered_outcomes, received_company_id, delivered_company_id, received_user_id, delivered_user_id,
-			phone, details, status, type, accepted_user_id, accepted_company_id, accepted_at, created_at`
+			phone, details, status, type, accepted_user_id, accepted_company_id, accepted_at, created_at,
+			(SELECT f.company_id FROM transaction_service_fees f WHERE f.transaction_id = transactions.id LIMIT 1)`
 
 type TransactionStorage struct {
 	db DBTX
@@ -314,7 +318,8 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 		&tr.AcceptedUserId,
 		&tr.AcceptedCompanyId,
 		&acceptedAt,
-		&tr.CreatedAt)
+		&tr.CreatedAt,
+		&tr.ServiceFeeCompanyId)
 
 	if err != nil {
 		return nil, err
@@ -525,6 +530,7 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 			&tr.AcceptedCompanyId,
 			&acceptedAt,
 			&tr.CreatedAt,
+			&tr.ServiceFeeCompanyId,
 		)
 
 		if err != nil {

@@ -487,6 +487,54 @@ func (s *DebtorsStorage) GetByCompanyPhoneAndCurrency(
 	return credit, nil
 }
 
+// GetByCompanyNameAndCurrency — kompaniya ichida ism + valyuta bo'yicha qarzdorni topadi.
+// Ism katta-kichik harf va bo'sh joylarga qaramay solishtiriladi. Telefon berilgan bo'lsa,
+// faqat o'sha telefonli yoki telefonsiz qarzdor mos keladi — boshqa telefonli bir xil ismli
+// qarzdorlar alohida odam deb qaraladi. Topilmasa sql.ErrNoRows qaytadi.
+func (s *DebtorsStorage) GetByCompanyNameAndCurrency(
+	ctx context.Context,
+	companyId int64,
+	fullName, phone, currency string,
+) (*Debtors, error) {
+	query := `
+				SELECT id, balance, currency, user_id, phone, company_id, created_at, full_name
+				FROM debtors
+				WHERE company_id = $1
+				  AND LOWER(TRIM(full_name)) = LOWER(TRIM($2))
+				  AND currency = $3
+				  AND ($4 = '' OR COALESCE(phone, '') = '' OR phone = $4)
+				ORDER BY created_at DESC LIMIT 1
+			`
+
+	credit := &Debtors{}
+	err := s.db.QueryRowContext(
+		ctx,
+		query,
+		companyId,
+		fullName,
+		currency,
+		phone,
+	).Scan(
+		&credit.ID,
+		&credit.Balance,
+		&credit.Currency,
+		&credit.UserID,
+		&credit.Phone,
+		&credit.CompanyID,
+		&credit.CreatedAt,
+		&credit.FullName,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+	credit.CreatedAtFormatted = credit.CreatedAt.In(loc).Format("2006-01-02 15:04:05")
+
+	return credit, nil
+}
+
 func (s *DebtorsStorage) Update(ctx context.Context, credit *Debtors) error {
 	query := `
 				UPDATE debtors SET balance = $1, currency = $2, user_id = $3, phone = $4, full_name = $5,

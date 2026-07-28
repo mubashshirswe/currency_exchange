@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 )
 
 // Business — tenant. Ierarxiya: business => company => users.
@@ -72,6 +74,49 @@ func (s *BusinessStorage) GetById(ctx context.Context, id int64) (*Business, err
 	}
 
 	return business, nil
+}
+
+// ListByIDs — berilgan id'lar bo'yicha businesslar, id => Business ko'rinishida.
+// Topilmagan id javobda umuman bo'lmaydi (xato emas).
+func (s *BusinessStorage) ListByIDs(ctx context.Context, ids []int64) (map[int64]Business, error) {
+	result := make(map[int64]Business, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, 0, len(ids))
+	args := make([]any, 0, len(ids))
+	for i, id := range ids {
+		placeholders = append(placeholders, "$"+strconv.Itoa(i+1))
+		args = append(args, id)
+	}
+
+	query := `SELECT ` + businessColumns + ` FROM businesses WHERE id IN (` +
+		strings.Join(placeholders, ", ") + `)`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		business := Business{}
+		if err := rows.Scan(
+			&business.ID,
+			&business.Name,
+			&business.Details,
+			&business.Phone,
+			&business.Status,
+			&business.CreatedAt,
+			&business.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		result[business.ID] = business
+	}
+
+	return result, rows.Err()
 }
 
 func (s *BusinessStorage) Update(ctx context.Context, business *Business) error {

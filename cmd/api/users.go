@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -20,12 +21,29 @@ type LoginUserPayload struct {
 	Phone    string `json:"phone"`
 	Password string `json:"password"`
 	// BusinessID — bir xil telefon raqami bir nechta businessda uchrasa,
-	// qaysi biriga kirish kerakligini aniqlashtiradi.
+	// qaysi biriga kirish kerakligini aniqlashtiradi. Yuborilmasa birinchi
+	// business tanlanadi va qolganlari javobdagi ro'yxatda qaytadi.
 	BusinessID int64 `json:"business_id"`
 }
 
 type RefreshTokenPayload struct {
 	RefreshToken string `json:"refresh_token"`
+}
+
+type SwitchBusinessPayload struct {
+	BusinessID int64 `json:"business_id"`
+}
+
+// businessMembership — bitta telefon egasining bitta businessdagi a'zoligi.
+// Mijoz shu ro'yxatdan business tanlab, parolsiz almashadi.
+type businessMembership struct {
+	BusinessID     int64  `json:"business_id"`
+	BusinessName   string `json:"business_name"`
+	BusinessStatus int64  `json:"business_status"`
+	UserID         int64  `json:"user_id"`
+	Username       string `json:"username"`
+	CompanyID      int64  `json:"company_id"`
+	Role           int64  `json:"role"`
 }
 
 // CreateUserHandler — joriy business ichida yangi hodim ochadi (faqat business egasi).
@@ -120,11 +138,131 @@ func (app *application) LoginUserHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	app.respondWithTokens(w, r, user)
+	app.respondWithTokens(w, r, user, candidates)
+}
+
+// SwitchBusinessHandler — joriy sessiyani boshqa businessga o'tkazadi: parol
+// qayta so'ralmaydi, chunki almashish faqat bir xil telefon + bir xil parolga
+// ega qatorlar orasida mumkin (login paytidagi tekshiruv bilan bir xil shart,
+// lekin DB'dan jonli o'qiladi — parol o'zgarsa eski token bilan o'tib bo'lmaydi).
+func (app *application) SwitchBusinessHandler(w http.ResponseWriter, r *http.Request) {
+	current, err := app.currentUser(r)
+	if err != nil {
+		app.unauthorizedErrorResponse(w, r, err)
+		return
+	}
+
+	var payload SwitchBusinessPayload
+	if err := readJSON(w, r, &payload); err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	if payload.BusinessID <= 0 {
+		app.badRequestResponse(w, r, fmt.Errorf("business_id majburiy"))
+		return
+	}
+
+	candidates, err := app.switchCandidates(r.Context(), current)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if payload.BusinessID == current.BusinessId {
+		// Xuddi shu business — yangi token juftligi berilaveradi, xato emas.
+		app.respondWithTokens(w, r, current, candidates)
+		return
+	}
+
+	target, err := pickLoginUser(candidates, payload.BusinessID)
+	if err != nil {
+		app.forbiddenResponse(w, r, fmt.Errorf("BU BUSINESSGA RUXSAT YO'Q"))
+		return
+	}
+
+	app.respondWithTokens(w, r, target, candidates)
+}
+
+// ListBusinessesHandler — joriy foydalanuvchi parolsiz o'ta oladigan businesslar.
+func (app *application) ListMyBusinessesHandler(w http.ResponseWriter, r *http.Request) {
+	current, err := app.currentUser(r)
+	if err != nil {
+		app.unauthorizedErrorResponse(w, r, err)
+		return
+	}
+
+	candidates, err := app.switchCandidates(r.Context(), current)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	memberships, err := app.memberships(r.Context(), candidates)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, memberships); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// switchCandidates — shu telefon+parol bilan ochiladigan barcha business qatorlari.
+// O'chirilgan userlarda phone bo'sh bo'lgani uchun ular hech qachon mos kelmaydi.
+func (app *application) switchCandidates(ctx context.Context, current *store.User) ([]store.User, error) {
+	if current.Phone == "" || current.Password == "" {
+		return []store.User{*current}, nil
+	}
+
+	candidates, err := app.store.Users.LoginCandidates(ctx, current.Phone, current.Password)
+	if err != nil {
+		return nil, err
+	}
+
+	// Joriy user ro'yxatda bo'lishi kafolatlanadi (parol o'zgarish poygasi).
+	for i := range candidates {
+		if candidates[i].ID == current.ID {
+			return candidates, nil
+		}
+	}
+
+	return append([]store.User{*current}, candidates...), nil
+}
+
+// memberships — nomlari bilan boyitilgan a'zoliklar ro'yxati.
+func (app *application) memberships(ctx context.Context, users []store.User) ([]businessMembership, error) {
+	ids := make([]int64, 0, len(users))
+	for i := range users {
+		ids = append(ids, users[i].BusinessId)
+	}
+
+	businesses, err := app.store.Businesses.ListByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]businessMembership, 0, len(users))
+	for i := range users {
+		business := businesses[users[i].BusinessId]
+		result = append(result, businessMembership{
+			BusinessID:     users[i].BusinessId,
+			BusinessName:   business.Name,
+			BusinessStatus: business.Status,
+			UserID:         users[i].ID,
+			Username:       users[i].Username,
+			CompanyID:      users[i].CompanyId,
+			Role:           users[i].Role,
+		})
+	}
+
+	return result, nil
 }
 
 // pickLoginUser — telefon business ichida unikal, businesslar bo'ylab takrorlanishi
-// mumkin. Bir nechta mos user topilsa, mijoz business_id yuborishi kerak.
+// mumkin. business_id berilsa o'sha business qatori, berilmasa birinchisi olinadi;
+// qolgan businesslarga mijoz keyin parolsiz almashadi.
 func pickLoginUser(candidates []store.User, businessID int64) (*store.User, error) {
 	if businessID > 0 {
 		for i := range candidates {
@@ -135,14 +273,11 @@ func pickLoginUser(candidates []store.User, businessID int64) (*store.User, erro
 		return nil, fmt.Errorf("LOGIN YOKI PAROL XATO")
 	}
 
-	switch len(candidates) {
-	case 0:
+	if len(candidates) == 0 {
 		return nil, fmt.Errorf("LOGIN YOKI PAROL XATO")
-	case 1:
-		return &candidates[0], nil
-	default:
-		return nil, fmt.Errorf("BU TELEFON BIR NECHTA BUSINESSDA MAVJUD: business_id yuboring")
 	}
+
+	return &candidates[0], nil
 }
 
 // RefreshTokenHandler exchanges a valid refresh token for a fresh access token
@@ -172,13 +307,28 @@ func (app *application) RefreshTokenHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	app.respondWithTokens(w, r, user)
+	candidates, err := app.switchCandidates(r.Context(), user)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	app.respondWithTokens(w, r, user, candidates)
 }
 
 // respondWithTokens issues a token pair for the user and writes the standard
-// authentication payload shared by login and refresh.
-func (app *application) respondWithTokens(w http.ResponseWriter, r *http.Request, user *store.User) {
+// authentication payload shared by login, refresh and business switching.
+// `candidates` — shu telefon+parol ochadigan barcha business qatorlari; javobdagi
+// `businesses` ro'yxati mijozga qaysi businessga parolsiz o'tish mumkinligini
+// ko'rsatadi.
+func (app *application) respondWithTokens(w http.ResponseWriter, r *http.Request, user *store.User, candidates []store.User) {
 	accessToken, refreshToken, err := issueUserTokenPair(user)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	memberships, err := app.memberships(r.Context(), candidates)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -193,6 +343,7 @@ func (app *application) respondWithTokens(w http.ResponseWriter, r *http.Request
 		"expires_in":         int(cfg.accessTTL.Seconds()),
 		"refresh_expires_in": int(cfg.refreshTTL.Seconds()),
 		"user":               user,
+		"businesses":         memberships,
 	}); err != nil {
 		app.internalServerError(w, r, err)
 		return

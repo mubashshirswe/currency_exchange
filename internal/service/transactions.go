@@ -504,6 +504,7 @@ func (s *TransactionService) GetByCompanyId(ctx context.Context, businessID int6
 				res["received_user"] = receivedUser.Username
 			}
 			attachAcceptedInfo(res, users, tran)
+			attachServiceFeeOwner(res, companies, tran)
 
 			response = append(response, res)
 		}
@@ -583,6 +584,7 @@ func (s *TransactionService) GetByField(ctx context.Context, businessID int64, s
 			"status":               tran.Status,
 		}
 		attachAcceptedInfo(res, users, tran)
+		attachServiceFeeOwner(res, companies, tran)
 
 		response = append(response, res)
 	}
@@ -657,6 +659,7 @@ func (s *TransactionService) Archived(ctx context.Context, businessID int64, pag
 			"status":               tran.Status,
 		}
 		attachAcceptedInfo(res, users, tran)
+		attachServiceFeeOwner(res, companies, tran)
 
 		response = append(response, res)
 	}
@@ -703,6 +706,35 @@ func attachAcceptedInfo(res map[string]interface{}, users []store.User, tran sto
 	res["accepted_company_id"] = tran.AcceptedCompanyId
 	res["accepted_at"] = tran.AcceptedAtFormatted
 	res["is_accepted"] = tran.Status == TRANSACTION_STATUS_ACCEPTED
+}
+
+// attachServiceFeeOwner — xizmat haqini qaysi kompaniya olganini javobga qo'shadi.
+// Tranzaksiyaning ikkala tomoni (masalan Toshkent va Namangan) buni bir xil ko'radi.
+func attachServiceFeeOwner(res map[string]interface{}, companies []store.Company, tran store.Transaction) {
+	ownerID := serviceFeeOwnerCompanyID(tran)
+
+	res["service_fee_company_id"] = ownerID
+	res["service_fee_company"] = ""
+	if ownerID > 0 {
+		if company := GetCompany(companies, ownerID); company != nil {
+			res["service_fee_company"] = company.Name
+		}
+	}
+}
+
+// serviceFeeOwnerCompanyID — xizmat haqi yozuvidagi kompaniya; yozuv bo'lmasa
+// (eski ma'lumot) yaratish/yakunlash bosqichi bo'yicha aniqlanadi.
+func serviceFeeOwnerCompanyID(tran store.Transaction) int64 {
+	if tran.ServiceFeeCompanyId != nil && *tran.ServiceFeeCompanyId > 0 {
+		return *tran.ServiceFeeCompanyId
+	}
+	if tran.ServiceFeeAmount <= 0 {
+		return 0
+	}
+	if tran.DeliveredUserId != nil && *tran.DeliveredUserId > 0 {
+		return tran.DeliveredCompanyId
+	}
+	return tran.ReceivedCompanyId
 }
 
 // formatServiceFee — eski mobil versiyalar bilan moslik uchun xizmat puli matn ko'rinishini qaytaradi.

@@ -493,8 +493,8 @@ func appendDebtAmount(amounts []debtAmount, currency string, amount int64) []deb
 
 // resolveTransactionDebtor — qarzdorni topadi yoki yaratadi.
 // debtor_id yuborilgan va kompaniya + valyuta mos bo'lsa o'sha ishlatiladi;
-// mos kelmasa yoki topilmasa telefon + valyuta bo'yicha qidiriladi,
-// u ham topilmasa yangi qarzdor ochiladi.
+// mos kelmasa yoki topilmasa telefon + valyuta bo'yicha, keyin ism + valyuta bo'yicha
+// qidiriladi, u ham topilmasa yangi qarzdor ochiladi.
 // Ikkinchi qaytish qiymati — qarzdor shu yerda yangi yaratilganini bildiradi.
 func resolveTransactionDebtor(
 	ctx context.Context,
@@ -540,6 +540,24 @@ func resolveTransactionDebtor(
 
 	if fullName == "" {
 		fullName = phone
+	}
+
+	// Telefon bo'yicha topilmadi — o'sha ism + valyutali qarzdor bor bo'lsa, u ishlatiladi,
+	// har safar yangi qarzdor ochilmasin.
+	if fullName != "" {
+		debtor, err := debtorsStorage.GetByCompanyNameAndCurrency(ctx, companyID, fullName, phone, currency)
+		switch {
+		case err == nil:
+			// Mavjud qarzdorning telefoni bo'sh bo'lsa, yangi kelgan telefon bilan to'ldiriladi.
+			if phone != "" && strings.TrimSpace(debtor.Phone) == "" {
+				debtor.Phone = phone
+			}
+			return debtor, false, nil
+		case err == sql.ErrNoRows:
+			// topilmadi — pastda yangi qarzdor ochiladi
+		default:
+			return nil, false, fmt.Errorf("failed to lookup debtor by name: %w", err)
+		}
 	}
 
 	debtor := &store.Debtors{

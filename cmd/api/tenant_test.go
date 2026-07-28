@@ -65,9 +65,15 @@ func TestPickLoginUser(t *testing.T) {
 		}
 	})
 
-	t.Run("noaniq business", func(t *testing.T) {
-		if _, err := pickLoginUser(candidates, 0); err == nil {
-			t.Fatal("bir nechta business uchun xato kutilgan edi")
+	t.Run("business_id yo'q — birinchisi", func(t *testing.T) {
+		// Bir nechta business bo'lsa login birinchisiga kiradi; qolganiga
+		// mijoz switch-business orqali parolsiz o'tadi.
+		user, err := pickLoginUser(candidates, 0)
+		if err != nil {
+			t.Fatalf("pickLoginUser: %v", err)
+		}
+		if user.ID != 1 {
+			t.Fatalf("got user %d, want 1", user.ID)
 		}
 	})
 

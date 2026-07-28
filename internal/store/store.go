@@ -59,6 +59,7 @@ type Storage struct {
 	Businesses interface {
 		Create(context.Context, *Business) error
 		GetById(context.Context, int64) (*Business, error)
+		ListByIDs(context.Context, []int64) (map[int64]Business, error)
 		Update(context.Context, *Business) error
 		SetStatus(context.Context, int64, int64) error
 		Delete(context.Context, int64) error
