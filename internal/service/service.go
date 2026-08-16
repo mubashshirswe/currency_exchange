@@ -70,7 +70,7 @@ type Service struct {
 	}
 
 	Transactions interface {
-		GetByField(context.Context, int64, *string, string, any, types.Pagination) ([]map[string]interface{}, error)
+		GetByField(context.Context, int64, *string, string, any, bool, types.Pagination) ([]map[string]interface{}, error)
 		PerformTransaction(context.Context, *store.Transaction) error
 		CompleteTransaction(context.Context, types.TransactionComplete) error
 		GetByCompanyId(context.Context, int64, int64, types.Pagination) ([]map[string]interface{}, error)

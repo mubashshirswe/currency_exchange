@@ -13,6 +13,9 @@ type FieldRequestPayload struct {
 	Search     *string `json:"search"`
 	FieldName  string  `json:"field_name"`
 	FieldValue any     `json:"field_value"`
+	// OnlyOpen — true bo'lsa, faqat yakunlanmagan (STATUS_CREATED/STATUS_ACCEPTED)
+	// tranzaksiyalar qaytariladi. false (default) — hozirgi kabi arxivlanmaganlar hammasi.
+	OnlyOpen bool `json:"only_open"`
 }
 
 func (app *application) CreateBalanceRecordHandler(w http.ResponseWriter, r *http.Request) {

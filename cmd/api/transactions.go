@@ -401,7 +401,7 @@ func (app *application) GetTransactionsByFieldHandler(w http.ResponseWriter, r *
 		return
 	}
 
-	transactions, err := app.service.Transactions.GetByField(r.Context(), t.BusinessID, search, payload.FieldName, payload.FieldValue, app.Pagination)
+	transactions, err := app.service.Transactions.GetByField(r.Context(), t.BusinessID, search, payload.FieldName, payload.FieldValue, payload.OnlyOpen, app.Pagination)
 	if err != nil {
 		app.internalServerError(w, r, err)
 		return

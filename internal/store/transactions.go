@@ -363,6 +363,10 @@ func (s *TransactionStorage) GetByField(
 	search *string,
 	fieldName string,
 	fieldValue any,
+	// onlyOpen — true bo'lsa, faqat yakunlanmagan (STATUS_CREATED/STATUS_ACCEPTED)
+	// tranzaksiyalar qaytariladi. false bo'lsa, avvalgidek faqat arxivlanmaganlar
+	// chiqariladi va tartib created_at DESC bo'yicha (default) qoladi.
+	onlyOpen bool,
 	pagination types.Pagination,
 ) ([]Transaction, error) {
 
@@ -376,7 +380,15 @@ func (s *TransactionStorage) GetByField(
 		return nil, err
 	}
 
-	args := []any{fieldValue, STATUS_ARCHIVED, businessID}
+	var args []any
+	var statusCond string
+	if onlyOpen {
+		args = []any{fieldValue, STATUS_CREATED, STATUS_ACCEPTED, businessID}
+		statusCond = "status IN ($2, $3)"
+	} else {
+		args = []any{fieldValue, STATUS_ARCHIVED, businessID}
+		statusCond = "status != $2"
+	}
 
 	// placeholder qo'shadi va $N qaytaradi
 	ph := func(v any) string {
@@ -387,7 +399,7 @@ func (s *TransactionStorage) GetByField(
 	query := `
 		SELECT ` + transactionColumns + `
 		FROM transactions
-		WHERE ` + fieldName + ` = $1 AND status != $2 AND business_id = $3
+		WHERE ` + fieldName + ` = $1 AND ` + statusCond + ` AND business_id = $` + fmt.Sprintf("%d", len(args)) + `
 	`
 
 	if search != nil && strings.TrimSpace(*search) != "" {
@@ -566,6 +578,16 @@ type CompanyAmount struct {
 	Remain              float64
 	ServiceFeeAmount    float64
 	ServiceFeeRemaining float64
+	// ReceivedCompleted/ReceivedPending — "olingan" tomon (sanaga bog'liq
+	// emas, barcha vaqt), statusga qarab ikkiga bo'lingan: COMPLETED(2)/
+	// ARCHIVED(3) => allaqachon olingan, CREATED(1)/ACCEPTED(4) => hali
+	// olinishi kerak (kutilayotgan).
+	ReceivedCompleted float64
+	ReceivedPending   float64
+	// GivenCompleted/GivenPending — "berilgan" tomon, xuddi shu statuslarga
+	// bo'lingan holda.
+	GivenCompleted float64
+	GivenPending   float64
 }
 
 // GetCompanyFinalAmounts — remain (qolgan summa) transactions jadvalidagi
@@ -575,9 +597,13 @@ type CompanyAmount struct {
 // (bir xil kompaniya turli tranzaksiyalarda ham "received", ham "delivered"
 // tomonida bo'lishi mumkin), shuning uchun uni statusga qarab ikkiga bo'lish
 // har ikkala bo'lakni ma'nosiz darajada katta (lekin bir-birini bekor
-// qiluvchi) qiymatlarga olib keladi. Statusga bog'liq "kutilayotgan" ta'sir
-// faqat GetPendingDeliveryTotals orqali, bitta o'z kompaniyangiz uchun
-// hisoblanadi (u yerda haqiqiy company_balances yozish tartibiga mos keladi).
+// qiluvchi) qiymatlarga olib keladi.
+//
+// ReceivedCompleted/ReceivedPending va GivenCompleted/GivenPending —
+// Olingan/Berilgan (yuqoridagi kabi) ammo SANA filtrisiz (barcha vaqt) va
+// statusga bo'lingan holda: har bir kompaniya kartasida "qanchasi olindi",
+// "qanchasi olinishi kerak (pending)", "qanchasi berildi", "qanchasi
+// berilishi kerak (pending)" ko'rsatish uchun.
 func (s *TransactionStorage) GetCompanyFinalAmounts(ctx context.Context, companyIDs []int64, date string) ([]CompanyAmount, error) {
 	query := `
 with all_outcomes as (
@@ -588,7 +614,8 @@ with all_outcomes as (
         elem->>'delivered_currency' as currency,
         (elem->>'delivered_amount')::numeric as delivered_amount,
         0::numeric as received_amount,
-        t.created_at
+        t.created_at,
+        t.status
     from transactions t
     cross join jsonb_array_elements(t.delivered_outcomes) as elem
     where t.delivered_company_id = ANY($1) or t.received_company_id = ANY($1)
@@ -602,7 +629,8 @@ with all_outcomes as (
         elem->>'received_currency' as currency,
         0::numeric as delivered_amount,
         (elem->>'received_amount')::numeric as received_amount,
-        t.created_at
+        t.created_at,
+        t.status
     from transactions t
     cross join jsonb_array_elements(t.received_incomes) as elem
     where t.delivered_company_id = ANY($1) or t.received_company_id = ANY($1)
@@ -664,7 +692,32 @@ select
           and upper(tsf.currency) = upper(a.currency)
           and t.status != 3
           and (t.created_at AT TIME ZONE 'Asia/Tashkent')::date = $2::date
-    ), 0) as service_fee_amount
+    ), 0) as service_fee_amount,
+
+    -- "Olingan" tomon, statusga bo'lingan (barcha vaqt, sanaga bog'liq emas):
+    -- COMPLETED(2)/ARCHIVED(3) => allaqachon olingan, CREATED(1)/ACCEPTED(4) => olinishi kerak.
+    coalesce(sum(
+        case when a.status in (2,3) then
+            case when a.type = 1 then a.delivered_amount when a.type = 2 then a.received_amount else 0 end
+        else 0 end
+    ),0) as received_completed,
+    coalesce(sum(
+        case when a.status in (1,4) then
+            case when a.type = 1 then a.delivered_amount when a.type = 2 then a.received_amount else 0 end
+        else 0 end
+    ),0) as received_pending,
+
+    -- "Berilgan" tomon, xuddi shu statuslarga bo'lingan.
+    coalesce(sum(
+        case when a.status in (2,3) then
+            case when a.type = 1 then a.received_amount when a.type = 2 then a.delivered_amount else 0 end
+        else 0 end
+    ),0) as given_completed,
+    coalesce(sum(
+        case when a.status in (1,4) then
+            case when a.type = 1 then a.received_amount when a.type = 2 then a.delivered_amount else 0 end
+        else 0 end
+    ),0) as given_pending
 
 from all_outcomes a
 join companies c on c.id = a.company_id
@@ -689,6 +742,10 @@ order by a.company_id, a.currency;
 			&ca.BerilganAmount,
 			&ca.Remain,
 			&ca.ServiceFeeAmount,
+			&ca.ReceivedCompleted,
+			&ca.ReceivedPending,
+			&ca.GivenCompleted,
+			&ca.GivenPending,
 		); err != nil {
 			return nil, err
 		}

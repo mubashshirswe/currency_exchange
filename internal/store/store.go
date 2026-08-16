@@ -145,7 +145,7 @@ type Storage struct {
 		SetAccepted(ctx context.Context, id, userID, companyID int64) error
 		GetById(context.Context, int64) (*Transaction, error)
 		Delete(context.Context, *int64) error
-		GetByField(context.Context, int64, *string, string, any, types.Pagination) ([]Transaction, error)
+		GetByField(context.Context, int64, *string, string, any, bool, types.Pagination) ([]Transaction, error)
 		GetInfos(ctx context.Context, companyId int64) ([]Transaction, error)
 		GetCompanyFinalAmounts(ctx context.Context, companyIDs []int64, date string) ([]CompanyAmount, error)
 		GetPendingDeliveryTotals(ctx context.Context, companyID int64) ([]PendingDeliveryAmount, error)

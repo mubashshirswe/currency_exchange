@@ -437,7 +437,7 @@ func (s *TransactionService) Delete(ctx context.Context, id *int64) error {
 }
 
 func (s *TransactionService) GetByCompanyId(ctx context.Context, businessID int64, companyId int64, pagination types.Pagination) ([]map[string]interface{}, error) {
-	trans, err := s.store.Transactions.GetByField(ctx, businessID, nil, "delivered_company_id", companyId, pagination)
+	trans, err := s.store.Transactions.GetByField(ctx, businessID, nil, "delivered_company_id", companyId, false, pagination)
 	if err != nil {
 		return nil, err
 	}
@@ -517,8 +517,8 @@ func (s *TransactionService) GetByCompanyId(ctx context.Context, businessID int6
 	return response, nil
 }
 
-func (s *TransactionService) GetByField(ctx context.Context, businessID int64, search *string, fieldName string, value any, pagination types.Pagination) ([]map[string]interface{}, error) {
-	trans, err := s.store.Transactions.GetByField(ctx, businessID, search, fieldName, value, pagination)
+func (s *TransactionService) GetByField(ctx context.Context, businessID int64, search *string, fieldName string, value any, onlyOpen bool, pagination types.Pagination) ([]map[string]interface{}, error) {
+	trans, err := s.store.Transactions.GetByField(ctx, businessID, search, fieldName, value, onlyOpen, pagination)
 	if err != nil {
 		return nil, err
 	}
