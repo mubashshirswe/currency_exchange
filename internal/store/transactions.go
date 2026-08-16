@@ -599,6 +599,13 @@ type CompanyAmount struct {
 	// BalanceComponent + PendingComponent = Remain.
 	BalanceComponent float64
 	PendingComponent float64
+	// PendingReceivable/PendingPayable — PendingComponent'ning delivered_outcomes
+	// (is_delivered_leg=true, status CREATED/ACCEPTED) tarkibidagi ikki tarafi,
+	// type bo'yicha ajratilgan: TYPE_SELL(1) => complete bo'lganda balans
+	// ORTADI ("oladigan"), TYPE_BUY(2) => complete bo'lganda balans KAMAYADI
+	// ("beradigan"). PendingReceivable - PendingPayable = PendingComponent.
+	PendingReceivable float64
+	PendingPayable    float64
 }
 
 // GetCompanyFinalAmounts — remain (qolgan summa) transactions jadvalidagi
@@ -757,7 +764,19 @@ select
                 case when a.type = 1 then a.delivered_amount when a.type = 2 then -a.delivered_amount else 0 end
             else 0
         end
-    ),0) as pending_component
+    ),0) as pending_component,
+
+    -- PendingReceivable/PendingPayable: yuqoridagi pending_component'ning
+    -- type bo'yicha ajratilgan ikki tarafi (delivered_company_id = shu
+    -- kompaniya, status hali CREATED/ACCEPTED).
+    coalesce(sum(
+        case when a.is_delivered_leg and a.status in (1,4) and a.type = 1
+            then a.delivered_amount else 0 end
+    ),0) as pending_receivable,
+    coalesce(sum(
+        case when a.is_delivered_leg and a.status in (1,4) and a.type = 2
+            then a.delivered_amount else 0 end
+    ),0) as pending_payable
 
 from all_outcomes a
 join companies c on c.id = a.company_id
@@ -788,6 +807,8 @@ order by a.company_id, a.currency;
 			&ca.GivenPending,
 			&ca.BalanceComponent,
 			&ca.PendingComponent,
+			&ca.PendingReceivable,
+			&ca.PendingPayable,
 		); err != nil {
 			return nil, err
 		}
