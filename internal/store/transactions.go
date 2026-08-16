@@ -564,6 +564,12 @@ type CompanyAmount struct {
 	OlinganAmount       float64
 	BerilganAmount      float64
 	Remain              float64
+	// RemainCompleted — remain, faqat status=COMPLETED yoki ARCHIVED (avval
+	// COMPLETED bo'lib keyin arxivlangan) tranzaksiyalar bo'yicha.
+	RemainCompleted float64
+	// RemainPending — remain, faqat status=PENDING yoki ACCEPTED (hali
+	// yakunlanmagan) tranzaksiyalar bo'yicha. RemainCompleted + RemainPending = Remain.
+	RemainPending       float64
 	ServiceFeeAmount    float64
 	ServiceFeeRemaining float64
 }
@@ -572,9 +578,10 @@ func (s *TransactionStorage) GetCompanyFinalAmounts(ctx context.Context, company
 	query := `
 with all_outcomes as (
     -- delivered_outcomes
-    select 
+    select
         t.delivered_company_id as company_id,
         t.type,
+        t.status,
         elem->>'delivered_currency' as currency,
         (elem->>'delivered_amount')::numeric as delivered_amount,
         0::numeric as received_amount,
@@ -586,9 +593,10 @@ with all_outcomes as (
     union all
 
     -- received_incomes
-    select 
+    select
         t.received_company_id as company_id,
         t.type,
+        t.status,
         elem->>'received_currency' as currency,
         0::numeric as delivered_amount,
         (elem->>'received_amount')::numeric as received_amount,
@@ -597,16 +605,16 @@ with all_outcomes as (
     cross join jsonb_array_elements(t.received_incomes) as elem
     where t.delivered_company_id = ANY($1) or t.received_company_id = ANY($1)
 )
-select 
+select
     a.company_id,
     c.name as company_name,
     a.currency,
-    
+
     -- Olingan summalar (faqat date filter, Toshkent vaqti bo'yicha)
     coalesce(sum(
-        case 
+        case
             when (a.created_at AT TIME ZONE 'Asia/Tashkent')::date = $2::date then
-                case 
+                case
                     when a.type = 1 then a.delivered_amount
                     when a.type = 2 then a.received_amount
                     else 0
@@ -617,9 +625,9 @@ select
 
     -- Berilgan summalar (faqat date filter, Toshkent vaqti bo'yicha)
     coalesce(sum(
-        case 
+        case
             when (a.created_at AT TIME ZONE 'Asia/Tashkent')::date = $2::date then
-                case 
+                case
                     when a.type = 1 then a.received_amount
                     when a.type = 2 then a.delivered_amount
                     else 0
@@ -628,9 +636,9 @@ select
         end
     ),0) as berilgan_amount,
 
-    -- Qolgan summasi (barcha transactionlar)
+    -- Qolgan summasi (barcha transactionlar, holatidan qat'i nazar)
     coalesce(sum(
-        case 
+        case
             when a.type = 1 then a.delivered_amount
             when a.type = 2 then a.received_amount
             else 0
@@ -638,12 +646,54 @@ select
     ),0)
     -
     coalesce(sum(
-        case 
+        case
             when a.type = 1 then a.received_amount
             when a.type = 2 then a.delivered_amount
             else 0
         end
     ),0) as remain,
+
+    -- Qolgan summasi — faqat COMPLETED/ARCHIVED (yakunlangan) tranzaksiyalar
+    coalesce(sum(
+        case when a.status in (2,3) then
+            case
+                when a.type = 1 then a.delivered_amount
+                when a.type = 2 then a.received_amount
+                else 0
+            end
+        else 0 end
+    ),0)
+    -
+    coalesce(sum(
+        case when a.status in (2,3) then
+            case
+                when a.type = 1 then a.received_amount
+                when a.type = 2 then a.delivered_amount
+                else 0
+            end
+        else 0 end
+    ),0) as remain_completed,
+
+    -- Qolgan summasi — faqat PENDING/ACCEPTED (kutilayotgan) tranzaksiyalar
+    coalesce(sum(
+        case when a.status in (1,4) then
+            case
+                when a.type = 1 then a.delivered_amount
+                when a.type = 2 then a.received_amount
+                else 0
+            end
+        else 0 end
+    ),0)
+    -
+    coalesce(sum(
+        case when a.status in (1,4) then
+            case
+                when a.type = 1 then a.received_amount
+                when a.type = 2 then a.delivered_amount
+                else 0
+            end
+        else 0 end
+    ),0) as remain_pending,
 
     -- Kunlik xizmat haqi (transaction_service_fees.company_id bo'yicha)
     coalesce((
@@ -678,6 +728,8 @@ order by a.company_id, a.currency;
 			&ca.OlinganAmount,
 			&ca.BerilganAmount,
 			&ca.Remain,
+			&ca.RemainCompleted,
+			&ca.RemainPending,
 			&ca.ServiceFeeAmount,
 		); err != nil {
 			return nil, err
