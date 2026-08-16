@@ -558,12 +558,12 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 }
 
 type CompanyAmount struct {
-	CompanyID           int64
-	CompanyName         string
-	Currency            string
-	OlinganAmount       float64
-	BerilganAmount      float64
-	Remain              float64
+	CompanyID      int64
+	CompanyName    string
+	Currency       string
+	OlinganAmount  float64
+	BerilganAmount float64
+	Remain         float64
 	// RemainCompleted — remain, faqat status=COMPLETED yoki ARCHIVED (avval
 	// COMPLETED bo'lib keyin arxivlangan) tranzaksiyalar bo'yicha.
 	RemainCompleted float64
