@@ -588,6 +588,17 @@ type CompanyAmount struct {
 	// bo'lingan holda.
 	GivenCompleted float64
 	GivenPending   float64
+	// BalanceComponent — shu kompaniyaning REAL company_balances.balance'iga
+	// ALLAQACHON ta'sir qilgan qism (barcha vaqt): received_incomes tomoni
+	// (u yaratishda darhol yoziladi, statusdan qat'i nazar) + delivered_outcomes
+	// tomonining faqat COMPLETED/ARCHIVED qismi (u faqat completeда yoziladi).
+	// PendingComponent — delivered_outcomes tomonining hali CREATED/ACCEPTED
+	// (hali complete bo'lmagan, hali balansga yozilmagan) qismi —
+	// GetPendingDeliveryTotals bilan bir xil formula, shu yerda har bir
+	// qarama-qarshi kompaniya uchun alohida hisoblangan.
+	// BalanceComponent + PendingComponent = Remain.
+	BalanceComponent float64
+	PendingComponent float64
 }
 
 // GetCompanyFinalAmounts — remain (qolgan summa) transactions jadvalidagi
@@ -615,7 +626,8 @@ with all_outcomes as (
         (elem->>'delivered_amount')::numeric as delivered_amount,
         0::numeric as received_amount,
         t.created_at,
-        t.status
+        t.status,
+        true as is_delivered_leg
     from transactions t
     cross join jsonb_array_elements(t.delivered_outcomes) as elem
     where t.delivered_company_id = ANY($1) or t.received_company_id = ANY($1)
@@ -630,7 +642,8 @@ with all_outcomes as (
         0::numeric as delivered_amount,
         (elem->>'received_amount')::numeric as received_amount,
         t.created_at,
-        t.status
+        t.status,
+        false as is_delivered_leg
     from transactions t
     cross join jsonb_array_elements(t.received_incomes) as elem
     where t.delivered_company_id = ANY($1) or t.received_company_id = ANY($1)
@@ -717,7 +730,34 @@ select
         case when a.status in (1,4) then
             case when a.type = 1 then a.received_amount when a.type = 2 then a.delivered_amount else 0 end
         else 0 end
-    ),0) as given_pending
+    ),0) as given_pending,
+
+    -- BalanceComponent: REAL company_balances'ga ALLAQACHON ta'sir qilgan qism.
+    -- received_incomes tomoni (is_delivered_leg=false) HAR DOIM real (yaratishda
+    -- darhol yoziladi, statusga bog'liq emas). delivered_outcomes tomoni
+    -- (is_delivered_leg=true) faqat COMPLETED(2)/ARCHIVED(3) bo'lsagina real
+    -- (applyCompanyOp faqat CompleteTransactionV2'da chaqiriladi).
+    coalesce(sum(
+        case
+            when not a.is_delivered_leg then
+                case when a.type = 1 then -a.received_amount when a.type = 2 then a.received_amount else 0 end
+            when a.is_delivered_leg and a.status in (2,3) then
+                case when a.type = 1 then a.delivered_amount when a.type = 2 then -a.delivered_amount else 0 end
+            else 0
+        end
+    ),0) as balance_component,
+
+    -- PendingComponent: delivered_outcomes tomonining hali CREATED(1)/
+    -- ACCEPTED(4) qismi — hali company_balances'ga yozilmagan, complete
+    -- bo'lgandan keyin qo'shiladigan summa (GetPendingDeliveryTotals bilan
+    -- bir xil formula, shu yerda har bir qarama-qarshi kompaniya uchun).
+    coalesce(sum(
+        case
+            when a.is_delivered_leg and a.status in (1,4) then
+                case when a.type = 1 then a.delivered_amount when a.type = 2 then -a.delivered_amount else 0 end
+            else 0
+        end
+    ),0) as pending_component
 
 from all_outcomes a
 join companies c on c.id = a.company_id
@@ -746,6 +786,8 @@ order by a.company_id, a.currency;
 			&ca.ReceivedPending,
 			&ca.GivenCompleted,
 			&ca.GivenPending,
+			&ca.BalanceComponent,
+			&ca.PendingComponent,
 		); err != nil {
 			return nil, err
 		}
