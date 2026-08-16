@@ -701,9 +701,15 @@ type PendingDeliveryAmount struct {
 }
 
 // GetPendingDeliveryTotals — companyID topshiruvchi (delivered_company_id) bo'lgan,
-// hali COMPLETED holatiga o'tmagan tranzaksiyalarning delivered_outcomes summasini
-// valyuta bo'yicha yig'adi. Ishora CompleteTransactionV2 dagi applyCompanyOp bilan bir xil:
-// TYPE_SELL (1) => kirim (+), TYPE_BUY (2) => chiqim (-).
+// hali PENDING(1) yoki ACCEPTED(4) holatidagi tranzaksiyalarning delivered_outcomes
+// summasini valyuta bo'yicha yig'adi. Ishora CompleteTransactionV2 dagi applyCompanyOp
+// bilan bir xil: TYPE_SELL (1) => kirim (+), TYPE_BUY (2) => chiqim (-).
+//
+// STATUS_COMPLETED emas — status != COMPLETED ishlatib bo'lmaydi, chunki
+// ARCHIVED(3) transaction avval COMPLETED bo'lib, keyin arxivlangan (Archive()
+// faqat COMPLETED'ni arxivlaydi) — uning delivered summasi allaqachon
+// company_balances'da bor, shuni yana "pending" deb qo'shib yuborish
+// summani ikki barobar ko'rsatib xato natija berardi.
 func (s *TransactionStorage) GetPendingDeliveryTotals(ctx context.Context, companyID int64) ([]PendingDeliveryAmount, error) {
 	query := `
 select
@@ -718,10 +724,10 @@ select
 from transactions t
 cross join jsonb_array_elements(t.delivered_outcomes) as elem
 where t.delivered_company_id = $1
-  and t.status != $2
+  and t.status = ANY($2)
 group by elem->>'delivered_currency'
 `
-	rows, err := s.db.QueryContext(ctx, query, companyID, STATUS_COMPLETED)
+	rows, err := s.db.QueryContext(ctx, query, companyID, pq.Array([]int64{STATUS_CREATED, STATUS_ACCEPTED}))
 	if err != nil {
 		return nil, err
 	}
