@@ -558,22 +558,26 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 }
 
 type CompanyAmount struct {
-	CompanyID      int64
-	CompanyName    string
-	Currency       string
-	OlinganAmount  float64
-	BerilganAmount float64
-	Remain         float64
-	// RemainCompleted — remain, faqat status=COMPLETED yoki ARCHIVED (avval
-	// COMPLETED bo'lib keyin arxivlangan) tranzaksiyalar bo'yicha.
-	RemainCompleted float64
-	// RemainPending — remain, faqat status=PENDING yoki ACCEPTED (hali
-	// yakunlanmagan) tranzaksiyalar bo'yicha. RemainCompleted + RemainPending = Remain.
-	RemainPending       float64
+	CompanyID           int64
+	CompanyName         string
+	Currency            string
+	OlinganAmount       float64
+	BerilganAmount      float64
+	Remain              float64
 	ServiceFeeAmount    float64
 	ServiceFeeRemaining float64
 }
 
+// GetCompanyFinalAmounts — remain (qolgan summa) transactions jadvalidagi
+// received_incomes/delivered_outcomes'dan to'g'ridan-to'g'ri, HAR QANDAY
+// statusdagi (pending/accepted/completed/archived) tranzaksiyani hisobga
+// olib chiqiladi — status bo'yicha ajratib bo'lmaydi: bu formula simmetrik
+// (bir xil kompaniya turli tranzaksiyalarda ham "received", ham "delivered"
+// tomonida bo'lishi mumkin), shuning uchun uni statusga qarab ikkiga bo'lish
+// har ikkala bo'lakni ma'nosiz darajada katta (lekin bir-birini bekor
+// qiluvchi) qiymatlarga olib keladi. Statusga bog'liq "kutilayotgan" ta'sir
+// faqat GetPendingDeliveryTotals orqali, bitta o'z kompaniyangiz uchun
+// hisoblanadi (u yerda haqiqiy company_balances yozish tartibiga mos keladi).
 func (s *TransactionStorage) GetCompanyFinalAmounts(ctx context.Context, companyIDs []int64, date string) ([]CompanyAmount, error) {
 	query := `
 with all_outcomes as (
@@ -581,7 +585,6 @@ with all_outcomes as (
     select
         t.delivered_company_id as company_id,
         t.type,
-        t.status,
         elem->>'delivered_currency' as currency,
         (elem->>'delivered_amount')::numeric as delivered_amount,
         0::numeric as received_amount,
@@ -596,7 +599,6 @@ with all_outcomes as (
     select
         t.received_company_id as company_id,
         t.type,
-        t.status,
         elem->>'received_currency' as currency,
         0::numeric as delivered_amount,
         (elem->>'received_amount')::numeric as received_amount,
@@ -636,7 +638,7 @@ select
         end
     ),0) as berilgan_amount,
 
-    -- Qolgan summasi (barcha transactionlar, holatidan qat'i nazar)
+    -- Qolgan summasi (barcha transactionlar)
     coalesce(sum(
         case
             when a.type = 1 then a.delivered_amount
@@ -652,48 +654,6 @@ select
             else 0
         end
     ),0) as remain,
-
-    -- Qolgan summasi — faqat COMPLETED/ARCHIVED (yakunlangan) tranzaksiyalar
-    coalesce(sum(
-        case when a.status in (2,3) then
-            case
-                when a.type = 1 then a.delivered_amount
-                when a.type = 2 then a.received_amount
-                else 0
-            end
-        else 0 end
-    ),0)
-    -
-    coalesce(sum(
-        case when a.status in (2,3) then
-            case
-                when a.type = 1 then a.received_amount
-                when a.type = 2 then a.delivered_amount
-                else 0
-            end
-        else 0 end
-    ),0) as remain_completed,
-
-    -- Qolgan summasi — faqat PENDING/ACCEPTED (kutilayotgan) tranzaksiyalar
-    coalesce(sum(
-        case when a.status in (1,4) then
-            case
-                when a.type = 1 then a.delivered_amount
-                when a.type = 2 then a.received_amount
-                else 0
-            end
-        else 0 end
-    ),0)
-    -
-    coalesce(sum(
-        case when a.status in (1,4) then
-            case
-                when a.type = 1 then a.received_amount
-                when a.type = 2 then a.delivered_amount
-                else 0
-            end
-        else 0 end
-    ),0) as remain_pending,
 
     -- Kunlik xizmat haqi (transaction_service_fees.company_id bo'yicha)
     coalesce((
@@ -728,8 +688,6 @@ order by a.company_id, a.currency;
 			&ca.OlinganAmount,
 			&ca.BerilganAmount,
 			&ca.Remain,
-			&ca.RemainCompleted,
-			&ca.RemainPending,
 			&ca.ServiceFeeAmount,
 		); err != nil {
 			return nil, err
@@ -750,6 +708,10 @@ order by a.company_id, a.currency;
 type PendingDeliveryAmount struct {
 	Currency string `json:"currency"`
 	Balance  int64  `json:"balance"`
+	// Count — shu valyutadagi delivered_outcomes yozuviga ega, hali
+	// yakunlanmagan tranzaksiyalar soni. Diagnostika uchun — bu sonning
+	// haqiqiy hayotdagi ochiq tranzaksiyalar soniga mosligini tekshirish uchun.
+	Count int `json:"count"`
 }
 
 // GetPendingDeliveryTotals — companyID topshiruvchi (delivered_company_id) bo'lgan,
@@ -772,7 +734,8 @@ select
             when t.type = 2 then -(elem->>'delivered_amount')::numeric
             else 0
         end
-    ), 0)::bigint as balance
+    ), 0)::bigint as balance,
+    count(distinct t.id) as tx_count
 from transactions t
 cross join jsonb_array_elements(t.delivered_outcomes) as elem
 where t.delivered_company_id = $1
@@ -788,7 +751,7 @@ group by elem->>'delivered_currency'
 	var out []PendingDeliveryAmount
 	for rows.Next() {
 		var p PendingDeliveryAmount
-		if err := rows.Scan(&p.Currency, &p.Balance); err != nil {
+		if err := rows.Scan(&p.Currency, &p.Balance, &p.Count); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
