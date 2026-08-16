@@ -31,7 +31,7 @@ type Transaction struct {
 	ServiceFeeCurrency string                    `json:"service_fee_currency"`
 	ServiceFeeDetails  string                    `json:"service_fee_details"`
 	// ServiceFeeCompanyId — xizmat haqini olgan kompaniya (transaction_service_fees.company_id).
-	// Tranzaksiyaning ikkala tomoni ham buni ko'radi.
+	// Javobda faqat shu kompaniyaning o'ziga ko'rinadi (service.MaskServiceFeeForViewer).
 	ServiceFeeCompanyId *int64 `json:"service_fee_company_id"`
 	Phone               string `json:"phone"`
 	Details             string `json:"details"`
@@ -689,4 +689,51 @@ order by a.company_id, a.currency;
 	}
 
 	return results, nil
+}
+
+// PendingDeliveryAmount — hali yakunlanmagan (pending/accepted) tranzaksiyalarning
+// topshirish (delivered_outcomes) tomoni bo'yicha kompaniya balansiga hali qo'shilmagan
+// summasi. company_balances'ga faqat CompleteTransactionV2'da yoziladi — shu oralig'dagi
+// "kutilayotgan" ta'sirni hisobot uchun taxminiy ko'rsatish uchun ishlatiladi.
+type PendingDeliveryAmount struct {
+	Currency string `json:"currency"`
+	Balance  int64  `json:"balance"`
+}
+
+// GetPendingDeliveryTotals — companyID topshiruvchi (delivered_company_id) bo'lgan,
+// hali COMPLETED holatiga o'tmagan tranzaksiyalarning delivered_outcomes summasini
+// valyuta bo'yicha yig'adi. Ishora CompleteTransactionV2 dagi applyCompanyOp bilan bir xil:
+// TYPE_SELL (1) => kirim (+), TYPE_BUY (2) => chiqim (-).
+func (s *TransactionStorage) GetPendingDeliveryTotals(ctx context.Context, companyID int64) ([]PendingDeliveryAmount, error) {
+	query := `
+select
+    elem->>'delivered_currency' as currency,
+    coalesce(sum(
+        case
+            when t.type = 1 then (elem->>'delivered_amount')::numeric
+            when t.type = 2 then -(elem->>'delivered_amount')::numeric
+            else 0
+        end
+    ), 0)::bigint as balance
+from transactions t
+cross join jsonb_array_elements(t.delivered_outcomes) as elem
+where t.delivered_company_id = $1
+  and t.status != $2
+group by elem->>'delivered_currency'
+`
+	rows, err := s.db.QueryContext(ctx, query, companyID, STATUS_COMPLETED)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []PendingDeliveryAmount
+	for rows.Next() {
+		var p PendingDeliveryAmount
+		if err := rows.Scan(&p.Currency, &p.Balance); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }

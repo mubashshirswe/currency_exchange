@@ -56,6 +56,34 @@ func serviceFeeCompanyForUpdate(
 	return serviceFeeCompanyAtCreate(tr, actingCompanyID), nil
 }
 
+// preserveForeignServiceFee — xizmat haqi boshqa kompaniyaga tegishli bo'lsa,
+// payload'dagi qiymat e'tiborga olinmaydi. Ko'ruvchiga haq maskalangani uchun
+// (MaskServiceFeeForViewer) tahrirlash formasi bo'sh keladi va aks holda
+// Namangan olgan haqni Toshkent tahriri o'chirib yuborardi.
+func preserveForeignServiceFee(
+	ctx context.Context,
+	tx store.DBTX,
+	tr *store.Transaction,
+	actingCompanyID int64,
+) error {
+	feeStorage := store.NewTransactionServiceFeeStorage(tx)
+	existing, err := feeStorage.GetByTransactionID(ctx, tr.ID)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if existing.CompanyID == actingCompanyID {
+		return nil
+	}
+
+	tr.ServiceFeeAmount = existing.Amount
+	tr.ServiceFeeCurrency = existing.Currency
+	tr.ServiceFeeDetails = existing.Details
+	return nil
+}
+
 func serviceFeeCompanyAtCreate(tr *store.Transaction, actingCompanyID int64) int64 {
 	if tr.ReceivedCompanyId != 0 {
 		return tr.ReceivedCompanyId
@@ -1030,6 +1058,10 @@ func (s *CompanyOpsService) UpdateTransactionV2(ctx context.Context, transaction
 	oldDebts, err := reverseTransactionDebts(ctx, tx, cbStorage, cbrStorage, transaction.ID)
 	if err != nil {
 		return fmt.Errorf("debt reverse on transaction update: %w", err)
+	}
+
+	if err := preserveForeignServiceFee(ctx, tx, transaction, companyID); err != nil {
+		return fmt.Errorf("service fee preserve on update: %w", err)
 	}
 
 	if transaction.ServiceFeeAmount > 0 {

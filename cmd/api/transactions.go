@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mubashshir3767/currencyExchange/internal/service"
 	"github.com/mubashshir3767/currencyExchange/internal/store"
 	"github.com/mubashshir3767/currencyExchange/internal/types"
 )
@@ -406,8 +407,10 @@ func (app *application) GetTransactionsByFieldHandler(w http.ResponseWriter, r *
 		return
 	}
 
-	// Xizmat haqi tranzaksiyaning ikkala tomoniga ham ko'rinadi (kim olgani
-	// `service_fee_company` da), shuning uchun maskalash yo'q.
+	// Xizmat haqi faqat uni olgan kompaniyaga ko'rinadi (Toshkent Namangan
+	// olgan haqni ko'rmaydi va aksincha).
+	service.MaskServiceFeeForViewer(transactions, t.CompanyID)
+
 	if err := app.writeResponse(w, http.StatusOK, transactions); err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -433,6 +436,8 @@ func (app *application) GetTransactionsCompanyIdHandler(w http.ResponseWriter, r
 		return
 	}
 
+	service.MaskServiceFeeForViewer(transactions, t.CompanyID)
+
 	if err := app.writeResponse(w, http.StatusOK, transactions); err != nil {
 		app.internalServerError(w, r, err)
 		return
@@ -453,12 +458,12 @@ func (app *application) GetInfosByCompanyIdHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if !t.IsOwner() {
-		for i := range transactions {
-			if transactions[i].CompanyID != t.CompanyID {
-				transactions[i].ServiceFeeAmount = 0
-				transactions[i].ServiceFeeRemaining = 0
-			}
+	// Info kartada ham xizmat haqi faqat o'z kompaniyasi bo'yicha ko'rinadi
+	// (business egasi uchun ham).
+	for i := range transactions {
+		if transactions[i].CompanyID != t.CompanyID {
+			transactions[i].ServiceFeeAmount = 0
+			transactions[i].ServiceFeeRemaining = 0
 		}
 	}
 
@@ -490,6 +495,8 @@ func (app *application) GetTransactionsByFieldAndDateHandler(w http.ResponseWrit
 		app.internalServerError(w, r, err)
 		return
 	}
+
+	service.MaskServiceFeeInTransactions(transactions, t.CompanyID)
 
 	if err := app.writeResponse(w, http.StatusOK, transactions); err != nil {
 		app.internalServerError(w, r, err)
@@ -526,6 +533,8 @@ func (app *application) ArchivedTransactionsHandler(w http.ResponseWriter, r *ht
 		app.internalServerError(w, r, err)
 		return
 	}
+
+	service.MaskServiceFeeForViewer(transactions, t.CompanyID)
 
 	if err := app.writeResponse(w, http.StatusOK, transactions); err != nil {
 		app.internalServerError(w, r, err)

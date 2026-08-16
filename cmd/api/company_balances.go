@@ -97,6 +97,25 @@ func (app *application) GetMyCompanyBalancesHandler(w http.ResponseWriter, r *ht
 	}
 }
 
+// GetMyCompanyPendingBalancesHandler — hali yakunlanmagan (pending/accepted) tranzaksiyalarning
+// topshirish tomoni bo'yicha company_balances'ga hali qo'shilmagan taxminiy summasi
+// (valyuta bo'yicha). Faqat hisobot/ko'rish uchun — haqiqiy balansga (company-balances) tegmaydi.
+func (app *application) GetMyCompanyPendingBalancesHandler(w http.ResponseWriter, r *http.Request) {
+	companyID, err := app.currentCompanyID(r)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	pending, err := app.store.Transactions.GetPendingDeliveryTotals(r.Context(), companyID)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	if err := app.writeResponse(w, http.StatusOK, pending); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
 // GetMyCompanyBalanceRecordsHandler — joriy foydalanuvchi kompaniyasining kirim/chiqim tarixi.
 // ?currency=USD bilan valyuta bo'yicha; ?page=&limit= bilan pagination.
 func (app *application) GetMyCompanyBalanceRecordsHandler(w http.ResponseWriter, r *http.Request) {

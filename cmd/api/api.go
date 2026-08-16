@@ -106,6 +106,7 @@ func (app *application) mount() *chi.Mux {
 
 			// Kompaniya balansi (joriy foydalanuvchi kompaniyasi bo'yicha)
 			r.Get("/company-balances", app.GetMyCompanyBalancesHandler)
+			r.Get("/company-balances/pending", app.GetMyCompanyPendingBalancesHandler)
 			r.Get("/company-balance-records", app.GetMyCompanyBalanceRecordsHandler)
 			r.Post("/company-balance-records", app.CreateMyCompanyBalanceRecordHandler)
 			r.Put("/company-balance-records/{id}", app.UpdateMyCompanyBalanceRecordHandler)

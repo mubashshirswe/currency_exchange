@@ -708,8 +708,46 @@ func attachAcceptedInfo(res map[string]interface{}, users []store.User, tran sto
 	res["is_accepted"] = tran.Status == TRANSACTION_STATUS_ACCEPTED
 }
 
+// MaskServiceFeeForViewer — xizmat haqi faqat uni olgan kompaniyaga ko'rinadi.
+// Boshqa filial (masalan Toshkent) Namangan olgan haqni ko'rmaydi; rol muhim
+// emas — business egasi ham faqat o'z kompaniyasi olgan haqni ko'radi.
+// Maskalangan yozuvda xizmat haqi butunlay yo'q ko'rinadi (mobil hech narsa
+// ko'rsatmaydi).
+func MaskServiceFeeForViewer(rows []map[string]interface{}, viewerCompanyID int64) {
+	for _, res := range rows {
+		ownerID, _ := res["service_fee_company_id"].(int64)
+		if ownerID == 0 || ownerID == viewerCompanyID {
+			continue
+		}
+
+		res["has_service_fee"] = false
+		res["service_fee"] = ""
+		res["service_fee_amount"] = int64(0)
+		res["service_fee_currency"] = ""
+		res["service_fee_details"] = ""
+		res["service_fee_company_id"] = int64(0)
+		res["service_fee_company"] = ""
+	}
+}
+
+// MaskServiceFeeInTransactions — MaskServiceFeeForViewer ning xom `Transaction`
+// ro'yxati uchun varianti (map'ga aylantirilmagan javoblar uchun).
+func MaskServiceFeeInTransactions(trans []store.Transaction, viewerCompanyID int64) {
+	for i := range trans {
+		ownerID := serviceFeeOwnerCompanyID(trans[i])
+		if ownerID == 0 || ownerID == viewerCompanyID {
+			continue
+		}
+
+		trans[i].ServiceFeeAmount = 0
+		trans[i].ServiceFeeCurrency = ""
+		trans[i].ServiceFeeDetails = ""
+		trans[i].ServiceFeeCompanyId = nil
+	}
+}
+
 // attachServiceFeeOwner — xizmat haqini qaysi kompaniya olganini javobga qo'shadi.
-// Tranzaksiyaning ikkala tomoni (masalan Toshkent va Namangan) buni bir xil ko'radi.
+// Javob keyin MaskServiceFeeForViewer orqali ko'ruvchi kompaniyaga moslanadi.
 func attachServiceFeeOwner(res map[string]interface{}, companies []store.Company, tran store.Transaction) {
 	ownerID := serviceFeeOwnerCompanyID(tran)
 

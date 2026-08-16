@@ -135,20 +135,30 @@ Ro'yxat javoblarida qo'shimcha maydonlar: `accepted_user_id`, `accepted_user`,
 
 ## Xizmat haqi ko'rinishi
 
-Xizmat haqi tranzaksiyaning **ikkala tomoniga ham** ko'rinadi: Toshkent olgan
-xizmat haqi Namangan ro'yxatida ham, Namangan olgani Toshkentda ham chiqadi
-(avval hodimga faqat o'z kompaniyasi olgan haq ko'rinardi, qolgani `0` bo'lib
-maskalanardi).
+Xizmat haqi **faqat uni olgan kompaniyaga** ko'rinadi: Namangan olgan haqni
+Toshkent ko'rmaydi va aksincha. **Rol muhim emas** — business egasi ham faqat
+o'z kompaniyasi olgan haqni ko'radi.
 
 Tranzaksiya ro'yxatlaridagi maydonlar (`GetByField`, `Archived`,
-`GetByCompanyId`): `service_fee_amount`, `service_fee_currency`,
-`service_fee_details` va kim olgani — `service_fee_company_id`,
-`service_fee_company`. Kompaniya `transaction_service_fees.company_id` dan
-olinadi; eski yozuvda u bo'lmasa, yaratishda kiritilgan bo'lsa qabul qiluvchi,
-yakunlashda kiritilgan bo'lsa yetkazuvchi kompaniya hisoblanadi.
+`GetByCompanyId`, `GetByFieldAndDate`): `service_fee_amount`,
+`service_fee_currency`, `service_fee_details` va kim olgani —
+`service_fee_company_id`, `service_fee_company`. Kompaniya
+`transaction_service_fees.company_id` dan olinadi; eski yozuvda u bo'lmasa,
+yaratishda kiritilgan bo'lsa qabul qiluvchi, yakunlashda kiritilgan bo'lsa
+yetkazuvchi kompaniya hisoblanadi.
 
-Info karta (`GetInfos`) avvalgidek qoladi: hodim faqat o'z kompaniyasining
-xizmat haqi summasini ko'radi.
+Boshqa kompaniyaning haqi javobda **butunlay yo'q** ko'rinadi
+(`service.MaskServiceFeeForViewer`): `has_service_fee: false`,
+`service_fee_amount: 0`, `service_fee`, `service_fee_currency`,
+`service_fee_details`, `service_fee_company` bo'sh, `service_fee_company_id: 0`.
+Mobil bunda xizmat haqi blokini umuman ko'rsatmaydi.
+
+Maskalangan haq tahrirda saqlanadi: `PUT /transactions/{id}/v2` da haq boshqa
+kompaniyaga tegishli bo'lsa payload'dagi qiymat e'tiborga olinmaydi va eski
+yozuv o'zgarmaydi (`preserveForeignServiceFee`).
+
+Info karta (`GetInfos`): kompaniya faqat o'zining xizmat haqi summasini ko'radi
+(business egasi uchun ham).
 
 ```bash
 # 3 bosqichli oqimni yoqish

@@ -148,6 +148,7 @@ type Storage struct {
 		GetByField(context.Context, int64, *string, string, any, types.Pagination) ([]Transaction, error)
 		GetInfos(ctx context.Context, companyId int64) ([]Transaction, error)
 		GetCompanyFinalAmounts(ctx context.Context, companyIDs []int64, date string) ([]CompanyAmount, error)
+		GetPendingDeliveryTotals(ctx context.Context, companyID int64) ([]PendingDeliveryAmount, error)
 		GetByFieldAndDate(context.Context, int64, string, string, string, any, types.Pagination) ([]Transaction, error)
 		Archive(context.Context, int64) error
 		Archived(context.Context, int64, types.Pagination) ([]Transaction, error)
