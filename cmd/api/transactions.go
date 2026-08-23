@@ -408,8 +408,10 @@ func (app *application) GetTransactionsByFieldHandler(w http.ResponseWriter, r *
 	}
 
 	// Xizmat haqi faqat uni olgan kompaniyaga ko'rinadi (Toshkent Namangan
-	// olgan haqni ko'rmaydi va aksincha).
-	service.MaskServiceFeeForViewer(transactions, t.CompanyID)
+	// olgan haqni ko'rmaydi va aksincha); business egasi barchasini ko'radi.
+	if !t.IsOwner() {
+		service.MaskServiceFeeForViewer(transactions, t.CompanyID)
+	}
 
 	if err := app.writeResponse(w, http.StatusOK, transactions); err != nil {
 		app.internalServerError(w, r, err)
@@ -436,7 +438,9 @@ func (app *application) GetTransactionsCompanyIdHandler(w http.ResponseWriter, r
 		return
 	}
 
-	service.MaskServiceFeeForViewer(transactions, t.CompanyID)
+	if !t.IsOwner() {
+		service.MaskServiceFeeForViewer(transactions, t.CompanyID)
+	}
 
 	if err := app.writeResponse(w, http.StatusOK, transactions); err != nil {
 		app.internalServerError(w, r, err)
@@ -458,12 +462,15 @@ func (app *application) GetInfosByCompanyIdHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Info kartada ham xizmat haqi faqat o'z kompaniyasi bo'yicha ko'rinadi
-	// (business egasi uchun ham).
-	for i := range transactions {
-		if transactions[i].CompanyID != t.CompanyID {
-			transactions[i].ServiceFeeAmount = 0
-			transactions[i].ServiceFeeRemaining = 0
+	// Info kartada xizmat haqi faqat o'z kompaniyasi bo'yicha ko'rinadi;
+	// business egasi (owner) esa businessdagi barcha kompaniyalar
+	// (Namangan + Toshkent) xizmat haqini ko'rishi kerak.
+	if !t.IsOwner() {
+		for i := range transactions {
+			if transactions[i].CompanyID != t.CompanyID {
+				transactions[i].ServiceFeeAmount = 0
+				transactions[i].ServiceFeeRemaining = 0
+			}
 		}
 	}
 
@@ -496,7 +503,9 @@ func (app *application) GetTransactionsByFieldAndDateHandler(w http.ResponseWrit
 		return
 	}
 
-	service.MaskServiceFeeInTransactions(transactions, t.CompanyID)
+	if !t.IsOwner() {
+		service.MaskServiceFeeInTransactions(transactions, t.CompanyID)
+	}
 
 	if err := app.writeResponse(w, http.StatusOK, transactions); err != nil {
 		app.internalServerError(w, r, err)
@@ -534,7 +543,9 @@ func (app *application) ArchivedTransactionsHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
-	service.MaskServiceFeeForViewer(transactions, t.CompanyID)
+	if !t.IsOwner() {
+		service.MaskServiceFeeForViewer(transactions, t.CompanyID)
+	}
 
 	if err := app.writeResponse(w, http.StatusOK, transactions); err != nil {
 		app.internalServerError(w, r, err)
