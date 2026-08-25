@@ -18,9 +18,12 @@ import (
 var nonDigitRe = regexp.MustCompile(`[^0-9]`)
 
 type Transaction struct {
-	ID                 int64                     `json:"id"`
-	Number             int64                     `json:"number"`
-	DeliveredNumber    int64                     `json:"delivered_number"`
+	ID              int64 `json:"id"`
+	Number          int64 `json:"number"`
+	DeliveredNumber int64 `json:"delivered_number"`
+	// DeliveryNumber — faqat "Dostavka" deb belgilangan operatsiyalarga beriladi
+	// (received_company_id bo'yicha alohida hisoblanadi). Oddiy operatsiyalarda 0.
+	DeliveryNumber     int64                     `json:"delivery_number"`
 	ReceivedCompanyId  int64                     `json:"received_company_id"`
 	ReceivedUserId     int64                     `json:"received_user_id"`
 	ReceivedIncomes    []types.ReceivedIncomes   `json:"received_incomes"`
@@ -50,7 +53,7 @@ type Transaction struct {
 
 // transactionColumns — barcha SELECT so'rovlari uchun yagona ustunlar ro'yxati.
 // Tartibi GetById va ConvertRowsToObject dagi Scan tartibi bilan bir xil.
-const transactionColumns = `id, number, delivered_number, service_fee_amount, service_fee_currency, service_fee_details,
+const transactionColumns = `id, number, delivered_number, delivery_number, service_fee_amount, service_fee_currency, service_fee_details,
 			received_incomes, delivered_outcomes, received_company_id, delivered_company_id, received_user_id, delivered_user_id,
 			phone, details, status, type, accepted_user_id, accepted_company_id, accepted_at, created_at,
 			(SELECT f.company_id FROM transaction_service_fees f WHERE f.transaction_id = transactions.id LIMIT 1)`
@@ -88,6 +91,12 @@ func (s *TransactionStorage) allocateReceivedNumber(ctx context.Context, company
 
 func (s *TransactionStorage) allocateDeliveredNumber(ctx context.Context, companyID int64) (int64, error) {
 	return s.allocateFromCounter(ctx, "transaction_delivered_company_counters", companyID)
+}
+
+// allocateDeliveryNumber — "Dostavka" operatsiyalari uchun received_company_id
+// bo'yicha alohida ketma-ket raqam.
+func (s *TransactionStorage) allocateDeliveryNumber(ctx context.Context, companyID int64) (int64, error) {
+	return s.allocateFromCounter(ctx, "transaction_delivery_company_counters", companyID)
 }
 
 func (s *TransactionStorage) allocateFromCounter(ctx context.Context, table string, companyID int64) (int64, error) {
@@ -135,20 +144,29 @@ func (s *TransactionStorage) Create(ctx context.Context, tr *Transaction) error 
 	}
 	tr.DeliveredNumber = deliveredNumber
 
+	if strings.TrimSpace(tr.ServiceFeeDetails) == "Dostavka" {
+		deliveryNumber, err := s.allocateDeliveryNumber(ctx, tr.ReceivedCompanyId)
+		if err != nil {
+			return err
+		}
+		tr.DeliveryNumber = deliveryNumber
+	}
+
 	loc, _ := time.LoadLocation("Asia/Tashkent")
 	nowUz := time.Now().In(loc)
 
 	query := `
 			INSERT INTO transactions(
-				number, delivered_number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
-	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at) 
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id, created_at`
+				number, delivered_number, delivery_number, service_fee_amount, service_fee_currency, service_fee_details, received_incomes, delivered_outcomes,
+	 			received_company_id, delivered_company_id, received_user_id, delivered_user_id, phone, details, status, type, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id, created_at`
 
 	err = s.db.QueryRowContext(
 		ctx,
 		query,
 		tr.Number,
 		tr.DeliveredNumber,
+		tr.DeliveryNumber,
 		tr.ServiceFeeAmount,
 		tr.ServiceFeeCurrency,
 		tr.ServiceFeeDetails,
@@ -174,6 +192,7 @@ func (s *TransactionStorage) Create(ctx context.Context, tr *Transaction) error 
 
 	return nil
 }
+
 func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error {
 	receivedIncomesJSON, err := json.Marshal(tr.ReceivedIncomes)
 	if err != nil {
@@ -302,6 +321,7 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 		&tr.ID,
 		&tr.Number,
 		&tr.DeliveredNumber,
+		&tr.DeliveryNumber,
 		&tr.ServiceFeeAmount,
 		&tr.ServiceFeeCurrency,
 		&serviceFeeDetails,
@@ -525,6 +545,7 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 			&tr.ID,
 			&tr.Number,
 			&tr.DeliveredNumber,
+			&tr.DeliveryNumber,
 			&tr.ServiceFeeAmount,
 			&tr.ServiceFeeCurrency,
 			&serviceFeeDetails,
