@@ -32,6 +32,11 @@ func (s *UsersStore) Set(ctx context.Context, user *store.User) error {
 	return s.rdb.Set(ctx, cacheKey, json, UserExpTime).Err()
 }
 
+func (s *UsersStore) Delete(ctx context.Context, userId int64) error {
+	cacheKey := fmt.Sprintf("user-%v", userId)
+	return s.rdb.Del(ctx, cacheKey).Err()
+}
+
 func (s *UsersStore) Get(ctx context.Context, userId int64) (*store.User, error) {
 	cacheKey := fmt.Sprintf("user-%v", userId)
 	log.Println("CACHE GET METHOD USED")

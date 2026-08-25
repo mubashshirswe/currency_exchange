@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/mubashshir3767/currencyExchange/internal/store"
@@ -444,6 +445,11 @@ func (app *application) UpdateUserHandler(w http.ResponseWriter, r *http.Request
 	if err := app.store.Users.Update(r.Context(), user); err != nil {
 		app.internalServerError(w, r, err)
 		return
+	}
+
+	// Cache eski company_id/business_id ni tutib qolmasligi uchun invalidate qilinadi.
+	if err := app.cacheStore.Users.Delete(r.Context(), id); err != nil {
+		log.Printf("user cache invalidate failed for id %d: %v", id, err)
 	}
 
 	if err := app.writeResponse(w, http.StatusOK, user); err != nil {
