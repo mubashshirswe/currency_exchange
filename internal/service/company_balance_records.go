@@ -181,9 +181,6 @@ func applyCompanyBalance(cb *store.CompanyBalance, recordType int64, amount int6
 		cb.Balance += amount
 		cb.OutInLay += amount
 	case TYPE_SELL: // chiqim
-		if cb.Balance < amount {
-			return fmt.Errorf(types.BALANCE_NO_ENOUGH_MONEY)
-		}
 		cb.Balance -= amount
 		cb.InOutLay += amount
 	default:
@@ -196,9 +193,6 @@ func applyCompanyBalance(cb *store.CompanyBalance, recordType int64, amount int6
 func reverseCompanyBalance(cb *store.CompanyBalance, recordType int64, amount int64) error {
 	switch recordType {
 	case TYPE_BUY: // kirimni bekor qilish
-		if cb.Balance < amount {
-			return fmt.Errorf(types.BALANCE_NO_ENOUGH_MONEY)
-		}
 		cb.Balance -= amount
 		cb.OutInLay -= amount
 	case TYPE_SELL: // chiqimni bekor qilish

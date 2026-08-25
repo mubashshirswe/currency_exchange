@@ -8,7 +8,6 @@ import (
 
 	"github.com/mubashshir3767/currencyExchange/internal/env"
 	"github.com/mubashshir3767/currencyExchange/internal/store"
-	"github.com/mubashshir3767/currencyExchange/internal/types"
 )
 
 // CompanyLedgerEnabled — true bo'lganda kompaniya balansi user balansiga qo'shimcha yangilanadi.
@@ -50,9 +49,6 @@ func ApplyCompanyBalanceChange(ctx context.Context, tx store.DBTX, p CompanyBala
 
 	switch p.RecordType {
 	case TYPE_SELL:
-		if cb.Balance < p.Amount {
-			return fmt.Errorf(types.BALANCE_NO_ENOUGH_MONEY)
-		}
 		cb.Balance -= p.Amount
 		cb.InOutLay += p.Amount
 	case TYPE_BUY:
@@ -85,9 +81,6 @@ func MaybeReverseCompanyBalanceChange(ctx context.Context, tx store.DBTX, compan
 		cb.Balance += amount
 		cb.InOutLay -= amount
 	case TYPE_BUY:
-		if cb.Balance < amount {
-			return fmt.Errorf(types.BALANCE_NO_ENOUGH_MONEY)
-		}
 		cb.Balance -= amount
 		cb.OutInLay -= amount
 	default:
