@@ -108,6 +108,7 @@ func (app *application) mount() *chi.Mux {
 			r.Get("/company-balances", app.GetMyCompanyBalancesHandler)
 			r.Get("/company-balances/pending", app.GetMyCompanyPendingBalancesHandler)
 			r.Get("/company-balance-records", app.GetMyCompanyBalanceRecordsHandler)
+			r.Get("/company-debt-records", app.GetMyCompanyDebtRecordsHandler)
 			r.Post("/company-balance-records", app.CreateMyCompanyBalanceRecordHandler)
 			r.Put("/company-balance-records/{id}", app.UpdateMyCompanyBalanceRecordHandler)
 			r.Delete("/company-balance-records/{id}", app.DeleteMyCompanyBalanceRecordHandler)

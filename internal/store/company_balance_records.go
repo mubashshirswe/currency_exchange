@@ -173,3 +173,70 @@ func (s *CompanyBalanceRecordStorage) ListByCompany(ctx context.Context, company
 	}
 	return out, rows.Err()
 }
+
+// DebtRecordRow — qarzdorlik bo'yicha bitta debit/credit tranzaksiyasi,
+// qaysi qarzdorga tegishli ekani (debtor_id + full_name) bilan birga.
+type DebtRecordRow struct {
+	ID                 int64  `json:"id"`
+	Amount             int64  `json:"amount"`
+	UserID             int64  `json:"user_id"`
+	Username           string `json:"username"`
+	Currency           string `json:"currency"`
+	Type               int64  `json:"type"`
+	Details            string `json:"details"`
+	DebtId             int64  `json:"debt_id"`
+	DebtorId           int64  `json:"debtor_id"`
+	DebtorName         string `json:"debtor_name"`
+	CreatedAtFormatted string `json:"created_at"`
+}
+
+// ListDebtRecordsByCompany — kompaniyadagi BARCHA qarzdorlarning debit/credit
+// tarixi, bitta ro'yxatga birlashtirilgan (currency bo'yicha filtrlanadi).
+// company_balance_records'dan faqat debt_id bor qatorlar olinadi (v2 qarz
+// oqimi shu jadvalga yozadi).
+func (s *CompanyBalanceRecordStorage) ListDebtRecordsByCompany(ctx context.Context, companyID int64, currency string, pagination types.Pagination) ([]DebtRecordRow, error) {
+	query := `
+		SELECT r.id, r.amount, r.user_id, COALESCE(u.username, ''),
+		       r.currency, r.type, COALESCE(r.details, ''),
+		       r.debt_id, COALESCE(d.debtor_id, 0), COALESCE(dr.full_name, ''),
+		       r.created_at
+		FROM company_balance_records r
+		LEFT JOIN users u ON u.id = r.user_id
+		LEFT JOIN debts d ON d.id = r.debt_id
+		LEFT JOIN debtors dr ON dr.id = d.debtor_id
+		WHERE r.company_id = $1 AND r.status != $2 AND r.debt_id IS NOT NULL`
+	args := []any{companyID, STATUS_ARCHIVED}
+	if currency != "" {
+		query += " AND r.currency = $3"
+		args = append(args, currency)
+	}
+	query += " ORDER BY r.created_at DESC"
+	query += fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+	out := []DebtRecordRow{}
+	for rows.Next() {
+		var r DebtRecordRow
+		var createdAt time.Time
+		if err := rows.Scan(
+			&r.ID, &r.Amount, &r.UserID, &r.Username,
+			&r.Currency, &r.Type, &r.Details,
+			&r.DebtId, &r.DebtorId, &r.DebtorName, &createdAt,
+		); err != nil {
+			return nil, err
+		}
+		if loc != nil {
+			r.CreatedAtFormatted = createdAt.In(loc).Format("2006-01-02 15:04:05")
+		} else {
+			r.CreatedAtFormatted = createdAt.Format("2006-01-02 15:04:05")
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

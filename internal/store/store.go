@@ -111,6 +111,7 @@ type Storage struct {
 		Delete(context.Context, int64) error
 		ListByLink(context.Context, string, int64) ([]CompanyBalanceRecord, error)
 		ListByCompany(context.Context, int64, string, types.Pagination) ([]CompanyBalanceRecordRow, error)
+		ListDebtRecordsByCompany(context.Context, int64, string, types.Pagination) ([]DebtRecordRow, error)
 	}
 
 	SoftBalances interface {

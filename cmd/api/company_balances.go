@@ -137,6 +137,28 @@ func (app *application) GetMyCompanyBalanceRecordsHandler(w http.ResponseWriter,
 	}
 }
 
+// GetMyCompanyDebtRecordsHandler — joriy foydalanuvchi kompaniyasidagi BARCHA
+// qarzdorlarning debit/credit tarixi, bitta ro'yxatga birlashtirilgan.
+// ?currency=USD bilan valyuta bo'yicha; ?page=&limit= bilan pagination.
+func (app *application) GetMyCompanyDebtRecordsHandler(w http.ResponseWriter, r *http.Request) {
+	companyID, err := app.currentCompanyID(r)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	currency := r.URL.Query().Get("currency")
+	app.LoadPaginationInfo(r, r.Context())
+
+	rows, err := app.store.CompanyBalanceRecords.ListDebtRecordsByCompany(r.Context(), companyID, currency, app.Pagination)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	if err := app.writeResponse(w, http.StatusOK, rows); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
 // CreateMyCompanyBalanceRecordHandler — kompaniya balansiga kirim/chiqim (deposit/withdraw).
 // MUSTAQIL: faqat company_balances + company_balance_records'ga ta'sir qiladi, user
 // balanslarga (balances) tegmaydi. Operatsiyani bajargan hodim user_id va kompaniya
