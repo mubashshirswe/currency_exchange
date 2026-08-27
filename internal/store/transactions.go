@@ -99,6 +99,33 @@ func (s *TransactionStorage) allocateDeliveryNumber(ctx context.Context, company
 	return s.allocateFromCounter(ctx, "transaction_delivery_company_counters", companyID)
 }
 
+// GetDeliveryCount — "Dostavka" hisoblagichining joriy qiymati (received_company_id
+// bo'yicha). Hech qachon "Dostavka" bo'lmagan kompaniya uchun 0 qaytadi.
+func (s *TransactionStorage) GetDeliveryCount(ctx context.Context, companyID int64) (int64, error) {
+	var number int64
+	query := `SELECT last_number FROM transaction_delivery_company_counters WHERE company_id = $1`
+	err := s.db.QueryRowContext(ctx, query, companyID).Scan(&number)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return number, nil
+}
+
+// ResetDeliveryCount — hisoblagichni 0 ga qaytaradi. Mavjud tranzaksiyalarning
+// delivery_number'iga tegmaydi — faqat KEYINGI "Dostavka" 1 dan qayta boshlanadi.
+func (s *TransactionStorage) ResetDeliveryCount(ctx context.Context, companyID int64) error {
+	query := `
+		INSERT INTO transaction_delivery_company_counters (company_id, last_number)
+		VALUES ($1, 0)
+		ON CONFLICT (company_id) DO UPDATE SET last_number = 0
+	`
+	_, err := s.db.ExecContext(ctx, query, companyID)
+	return err
+}
+
 func (s *TransactionStorage) allocateFromCounter(ctx context.Context, table string, companyID int64) (int64, error) {
 	if companyID == 0 {
 		return 0, fmt.Errorf("company_id is required for transaction number")

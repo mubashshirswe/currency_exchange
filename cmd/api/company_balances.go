@@ -61,6 +61,52 @@ func (app *application) GetCompanyBalanceRecordsHandler(w http.ResponseWriter, r
 	}
 }
 
+// GetCompanyDeliveryCountHandler — "Dostavka" hisoblagichining joriy qiymati.
+func (app *application) GetCompanyDeliveryCountHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	companyID := getIDFromContext(r)
+	if err := app.authorizeCompany(r, t, companyID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	count, err := app.store.Transactions.GetDeliveryCount(r.Context(), companyID)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	if err := app.writeResponse(w, http.StatusOK, map[string]int64{"count": count}); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// ResetCompanyDeliveryCountHandler — "Dostavka" hisoblagichini 0 ga qaytaradi.
+// Mavjud tranzaksiyalarga tegmaydi — faqat keyingi delivery_number 1 dan boshlanadi.
+func (app *application) ResetCompanyDeliveryCountHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	companyID := getIDFromContext(r)
+	if err := app.authorizeCompany(r, t, companyID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	if err := app.store.Transactions.ResetDeliveryCount(r.Context(), companyID); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	if err := app.writeResponse(w, http.StatusOK, "RESET"); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
 // currentCompanyID — joriy foydalanuvchining kompaniya id'si (tenant kontekstidan).
 func (app *application) currentCompanyID(r *http.Request) (int64, error) {
 	t := tenantFrom(r)

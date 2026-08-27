@@ -153,6 +153,8 @@ type Storage struct {
 		GetByFieldAndDate(context.Context, int64, string, string, string, any, types.Pagination) ([]Transaction, error)
 		Archive(context.Context, int64) error
 		Archived(context.Context, int64, types.Pagination) ([]Transaction, error)
+		GetDeliveryCount(ctx context.Context, companyID int64) (int64, error)
+		ResetDeliveryCount(ctx context.Context, companyID int64) error
 	}
 
 	TransactionServiceFees interface {

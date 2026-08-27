@@ -711,11 +711,17 @@ func attachAcceptedInfo(res map[string]interface{}, users []store.User, tran sto
 	res["is_accepted"] = tran.Status == TRANSACTION_STATUS_ACCEPTED
 }
 
-// MaskServiceFeeForViewer — xizmat haqi faqat uni olgan kompaniyaga ko'rinadi.
-// Boshqa filial (masalan Toshkent) Namangan olgan haqni ko'rmaydi; rol muhim
-// emas — business egasi ham faqat o'z kompaniyasi olgan haqni ko'radi.
-// Maskalangan yozuvda xizmat haqi butunlay yo'q ko'rinadi (mobil hech narsa
-// ko'rsatmaydi).
+// MaskServiceFeeForViewer — xizmat haqi SUMMASI faqat uni olgan kompaniyaga
+// ko'rinadi. Boshqa filial (masalan Toshkent) Namangan olgan haq summasi,
+// valyutasi, izohi va kompaniyasini ko'rmaydi; rol muhim emas — business
+// egasi ham faqat o'z kompaniyasi olgan haqni to'liq ko'radi.
+// `has_service_fee` (haq umuman kiritilganmi) ATAYLAB maskalanmaydi: yakunlash
+// oqimida yetkazib beruvchi kompaniya (delivery) shu belgi bo'yicha "yaratishda
+// xizmat haqi kiritilgan, qayta so'ralmasin" deb qaror qiladi — agar bu ham
+// yashirilsa, boshqa kompaniya vakili xizmat haqini qayta kiritishga majbur
+// bo'ladi. "Dostavka" belgisi (service_fee_details) ham xuddi shunday —
+// u xizmat haqi emas, dostavka flag'i sifatida barcha tomonlarga (received
+// company, delivery company, admin, worker) ko'rinishi kerak.
 func MaskServiceFeeForViewer(rows []map[string]interface{}, viewerCompanyID int64) {
 	for _, res := range rows {
 		ownerID, _ := res["service_fee_company_id"].(int64)
@@ -723,11 +729,14 @@ func MaskServiceFeeForViewer(rows []map[string]interface{}, viewerCompanyID int6
 			continue
 		}
 
-		res["has_service_fee"] = false
+		isDelivery := res["service_fee_details"] == "Dostavka"
+
 		res["service_fee"] = ""
 		res["service_fee_amount"] = int64(0)
 		res["service_fee_currency"] = ""
-		res["service_fee_details"] = ""
+		if !isDelivery {
+			res["service_fee_details"] = ""
+		}
 		res["service_fee_company_id"] = int64(0)
 		res["service_fee_company"] = ""
 	}
@@ -744,7 +753,9 @@ func MaskServiceFeeInTransactions(trans []store.Transaction, viewerCompanyID int
 
 		trans[i].ServiceFeeAmount = 0
 		trans[i].ServiceFeeCurrency = ""
-		trans[i].ServiceFeeDetails = ""
+		if trans[i].ServiceFeeDetails != "Dostavka" {
+			trans[i].ServiceFeeDetails = ""
+		}
 		trans[i].ServiceFeeCompanyId = nil
 	}
 }

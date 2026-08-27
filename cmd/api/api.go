@@ -223,6 +223,8 @@ func (app *application) mount() *chi.Mux {
 					r.Get("/balances", app.GetCompanyBalancesHandler)
 					r.Get("/balance-records", app.GetCompanyBalanceRecordsHandler)
 					r.Get("/users/activity", app.GetCompanyUserActivityHandler)
+					r.Get("/delivery-count", app.GetCompanyDeliveryCountHandler)
+					r.Post("/delivery-count/reset", app.ResetCompanyDeliveryCountHandler)
 				})
 			})
 		})
