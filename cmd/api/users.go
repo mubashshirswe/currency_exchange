@@ -377,7 +377,15 @@ func (app *application) GetAllUserHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := app.writeResponse(w, http.StatusOK, users); err != nil {
+	visible := make([]store.User, 0, len(users))
+	for _, u := range users {
+		if u.Phone == "" {
+			continue
+		}
+		visible = append(visible, u)
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, visible); err != nil {
 		app.internalServerError(w, r, err)
 		return
 	}
