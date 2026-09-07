@@ -101,16 +101,21 @@ func (s *ServiceFeeService) AttachRemainingToCompanyAmounts(
 	}
 
 	remainingMap := map[string]float64{}
+	deliveryCountMap := map[string]int64{}
 	for _, r := range rows {
 		name := nameByID[r.CompanyID]
 		key := name + "|" + strings.ToUpper(r.Currency)
 		remainingMap[key] += float64(r.Remaining)
+		deliveryCountMap[key] += r.DeliveryCount
 	}
 
 	for i := range amounts {
 		key := amounts[i].CompanyName + "|" + strings.ToUpper(amounts[i].Currency)
 		if v, ok := remainingMap[key]; ok {
 			amounts[i].ServiceFeeRemaining = v
+		}
+		if v, ok := deliveryCountMap[key]; ok {
+			amounts[i].ServiceFeeDeliveryCount = v
 		}
 	}
 	return nil

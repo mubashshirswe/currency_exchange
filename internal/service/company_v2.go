@@ -905,6 +905,9 @@ func (s *CompanyOpsService) AcceptTransactionV2(ctx context.Context, transaction
 	if tran.Status == store.STATUS_ACCEPTED {
 		return fmt.Errorf(types.TRANSACTION_ALREADY_ACCEPTED)
 	}
+	if companyID == tran.ReceivedCompanyId {
+		return fmt.Errorf(types.TRANSACTION_CREATOR_CANNOT_FULFILL)
+	}
 
 	if err := transactionsStorage.SetAccepted(ctx, tran.ID, actingUserID, companyID); err != nil {
 		if err == sql.ErrNoRows {
@@ -960,6 +963,9 @@ func (s *CompanyOpsService) CompleteTransactionV2(ctx context.Context, complete 
 
 	if settings.IsThreeStage() && tran.Status != store.STATUS_ACCEPTED {
 		return fmt.Errorf(types.TRANSACTION_NOT_ACCEPTED)
+	}
+	if companyID == tran.ReceivedCompanyId {
+		return fmt.Errorf(types.TRANSACTION_CREATOR_CANNOT_FULFILL)
 	}
 
 	feeAtComplete := resolveCompleteServiceFee(complete)

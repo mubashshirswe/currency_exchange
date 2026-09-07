@@ -241,3 +241,11 @@ func (s *UserSessionStorage) DeleteByFCMToken(ctx context.Context, fcmToken stri
 	_, err := s.db.ExecContext(ctx, `DELETE FROM user_sessions WHERE fcm_token = $1`, fcmToken)
 	return err
 }
+
+// DeleteAllByUserID — userning barcha qurilma sessiyalarini o'chiradi. User
+// o'chirilganda chaqiriladi: ilova keyingi so'rovda (yoki fcm_token orqali)
+// sessiyani topmay, foydalanuvchini avtomatik chiqarib yuboradi.
+func (s *UserSessionStorage) DeleteAllByUserID(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM user_sessions WHERE user_id = $1`, userID)
+	return err
+}

@@ -307,6 +307,10 @@ func (app *application) RefreshTokenHandler(w http.ResponseWriter, r *http.Reque
 		app.unauthorizedErrorResponse(w, r, err)
 		return
 	}
+	if user.Phone == "" {
+		app.unauthorizedErrorResponse(w, r, errUserDeleted)
+		return
+	}
 
 	candidates, err := app.switchCandidates(r.Context(), user)
 	if err != nil {
@@ -473,6 +477,17 @@ func (app *application) DeleteUserHandler(w http.ResponseWriter, r *http.Request
 	if err := app.store.Users.Delete(r.Context(), &id, t.BusinessID); err != nil {
 		app.internalServerError(w, r, err)
 		return
+	}
+
+	// Cache eski (hali o'chirilmagan) phone qiymatini tutib qolmasligi uchun invalidate qilinadi.
+	if err := app.cacheStore.Users.Delete(r.Context(), id); err != nil {
+		log.Printf("user cache invalidate failed for id %d: %v", id, err)
+	}
+
+	// Userning barcha qurilma sessiyalari o'chiriladi — ilova keyingi so'rovda
+	// (yoki so'rovsiz, sessiya topilmagani uchun) foydalanuvchini chiqarib yuboradi.
+	if err := app.store.UserSessions.DeleteAllByUserID(r.Context(), id); err != nil {
+		log.Printf("user sessions cleanup failed for id %d: %v", id, err)
 	}
 
 	if err := app.writeResponse(w, http.StatusOK, "DELETED"); err != nil {

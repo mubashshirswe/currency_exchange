@@ -44,6 +44,10 @@ type ServiceFeeRemainingRow struct {
 	CompanyID int64
 	Currency  string
 	Remaining int64
+	// DeliveryCount — status=1 (taqsimlanmagan) yozuvlar orasida details='Dostavka'
+	// bo'lganlarining soni. Settle qilinganda status=2 ga o'tadi va bu yerdan
+	// tushib qoladi — qayta ko'rsatilmaydi.
+	DeliveryCount int64
 }
 
 type TransactionServiceFeeStorage struct {
@@ -278,7 +282,8 @@ func (s *TransactionServiceFeeStorage) ListAll(
 func (s *TransactionServiceFeeStorage) GetRemainingByCompanies(
 	ctx context.Context, companyIDs []int64,
 ) ([]ServiceFeeRemainingRow, error) {
-	query := `SELECT company_id, currency, COALESCE(SUM(amount), 0)::bigint
+	query := `SELECT company_id, currency, COALESCE(SUM(amount), 0)::bigint,
+		COALESCE(SUM(CASE WHEN details = 'Dostavka' THEN 1 ELSE 0 END), 0)::bigint
 		FROM transaction_service_fees
 		WHERE company_id = ANY($1) AND status = $2 AND amount > 0
 		GROUP BY company_id, currency`
@@ -290,7 +295,7 @@ func (s *TransactionServiceFeeStorage) GetRemainingByCompanies(
 	out := []ServiceFeeRemainingRow{}
 	for rows.Next() {
 		var r ServiceFeeRemainingRow
-		if err := rows.Scan(&r.CompanyID, &r.Currency, &r.Remaining); err != nil {
+		if err := rows.Scan(&r.CompanyID, &r.Currency, &r.Remaining, &r.DeliveryCount); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

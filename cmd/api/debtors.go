@@ -416,6 +416,32 @@ func (app *application) GetDebtsByDebtorIdHandler(w http.ResponseWriter, r *http
 	}
 }
 
+// GetDebtByIdHandler — bitta qarz yozuvi (debts.id), debtor_id'ni aniqlash uchun
+// (masalan balance record'dan qaysi qarzdorga tegishli ekanini topish).
+func (app *application) GetDebtByIdHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	id := getIDFromContext(r)
+	if err := app.authorizeResource(r, t, "debts", id); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
+	debt, err := app.store.Debts.GetByID(r.Context(), id)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+
+	if err := app.writeResponse(w, http.StatusOK, debt); err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+}
+
 func (app *application) GetDebtorsByIdHandler(w http.ResponseWriter, r *http.Request) {
 	t, ok := app.requireTenant(w, r)
 	if !ok {

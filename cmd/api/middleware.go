@@ -30,6 +30,13 @@ func (app *application) JWTUserMiddleware() func(http.Handler) http.Handler {
 				return
 			}
 
+			// Phone bo'sh — user o'chirilgan (store.Delete shunday belgilaydi).
+			// Eski token bilan kirishga urinsa ham 401.
+			if user.Phone == "" {
+				app.unauthorizedErrorResponse(w, r, errUserDeleted)
+				return
+			}
+
 			if user.BusinessId == 0 {
 				app.unauthorizedErrorResponse(w, r, errNoBusiness)
 				return

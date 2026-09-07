@@ -172,6 +172,8 @@ func (app *application) CompleteTransactionV2Handler(w http.ResponseWriter, r *h
 			app.badRequestResponse(w, r, fmt.Errorf("BUYURTMA ALLAQACHON YAKUNLANGAN"))
 		case strings.Contains(err.Error(), types.TRANSACTION_NOT_ACCEPTED):
 			app.badRequestResponse(w, r, fmt.Errorf(types.TRANSACTION_NOT_ACCEPTED))
+		case strings.Contains(err.Error(), types.TRANSACTION_CREATOR_CANNOT_FULFILL):
+			app.forbiddenResponse(w, r, fmt.Errorf(types.TRANSACTION_CREATOR_CANNOT_FULFILL))
 		default:
 			app.internalServerError(w, r, err)
 		}
@@ -210,6 +212,8 @@ func (app *application) AcceptTransactionV2Handler(w http.ResponseWriter, r *htt
 		case strings.Contains(err.Error(), types.TRANSACTION_ACCEPT_DISABLED),
 			strings.Contains(err.Error(), types.TRANSACTION_ALREADY_ACCEPTED):
 			app.badRequestResponse(w, r, err)
+		case strings.Contains(err.Error(), types.TRANSACTION_CREATOR_CANNOT_FULFILL):
+			app.forbiddenResponse(w, r, fmt.Errorf(types.TRANSACTION_CREATOR_CANNOT_FULFILL))
 		default:
 			app.internalServerError(w, r, err)
 		}

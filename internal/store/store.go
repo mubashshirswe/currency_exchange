@@ -199,6 +199,7 @@ type Storage struct {
 		FCMTokensByUserID(context.Context, int64) ([]string, error)
 		FCMTokensByCompanyID(context.Context, int64) ([]string, error)
 		DeleteByFCMToken(context.Context, string) error
+		DeleteAllByUserID(context.Context, int64) error
 	}
 }
 

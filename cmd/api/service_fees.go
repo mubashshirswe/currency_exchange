@@ -12,6 +12,10 @@ type ServiceFeeSettlePayload struct {
 	Amount   int64  `json:"amount"`
 	Currency string `json:"currency"`
 	Details  string `json:"details"`
+	// CompanyID — owner business ichidagi bir nechta kompaniyani ko'radi,
+	// shu maydon qaysi kompaniyani clear qilishni aniqlashtiradi. Bo'sh
+	// kelsa (0), joriy foydalanuvchining o'z kompaniyasi olinadi.
+	CompanyID int64 `json:"company_id"`
 }
 
 func (app *application) GetTransactionServiceFeesHandler(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +94,9 @@ func (app *application) GetServiceFeeSettlementsHandler(w http.ResponseWriter, r
 	}
 }
 
+// CreateServiceFeeSettlementHandler — xizmat pulini 0 qilish (yakunlash).
+// Faqat business egasi (owner) bajara oladi — hodim taqsimlanmagan xizmat
+// haqini ko'ra oladi, lekin clear qila olmaydi.
 func (app *application) CreateServiceFeeSettlementHandler(w http.ResponseWriter, r *http.Request) {
 	var payload ServiceFeeSettlePayload
 	if err := readJSON(w, r, &payload); err != nil {
@@ -97,13 +104,22 @@ func (app *application) CreateServiceFeeSettlementHandler(w http.ResponseWriter,
 		return
 	}
 
-	t, ok := app.requireTenant(w, r)
+	t, ok := app.requireOwner(w, r)
 	if !ok {
 		return
 	}
 
+	companyID := payload.CompanyID
+	if companyID == 0 {
+		companyID = t.CompanyID
+	}
+	if err := app.authorizeCompany(r, t, companyID); err != nil {
+		app.handleScopeError(w, r, err)
+		return
+	}
+
 	st, err := app.service.ServiceFees.Settle(
-		r.Context(), t.CompanyID, t.UserID,
+		r.Context(), companyID, t.UserID,
 		payload.Amount, payload.Currency, payload.Details,
 	)
 	if err != nil {

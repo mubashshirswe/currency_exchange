@@ -22,6 +22,7 @@ var (
 	errForeignBusiness = errors.New("resurs boshqa businessga tegishli")
 	errForeignCompany  = errors.New("resurs boshqa kompaniyaga tegishli")
 	errOwnerOnly       = errors.New("faqat business egasi uchun")
+	errUserDeleted     = errors.New("foydalanuvchi o'chirilgan")
 )
 
 // tenant — joriy so'rovning tenant konteksti.
