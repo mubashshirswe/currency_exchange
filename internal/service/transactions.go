@@ -495,6 +495,7 @@ func (s *TransactionService) GetByCompanyId(ctx context.Context, businessID int6
 				"phone":                tran.Phone,
 				"details":              tran.Details,
 				"created_at":           tran.CreatedAt,
+				"completed_at":         tran.CompletedAtFormatted,
 				"type":                 tran.Type,
 				"status":               tran.Status,
 			}
@@ -582,6 +583,7 @@ func (s *TransactionService) GetByField(ctx context.Context, businessID int64, s
 			"phone":                tran.Phone,
 			"details":              tran.Details,
 			"created_at":           tran.CreatedAt,
+			"completed_at":         tran.CompletedAtFormatted,
 			"type":                 tran.Type,
 			"status":               tran.Status,
 		}
@@ -658,6 +660,7 @@ func (s *TransactionService) Archived(ctx context.Context, businessID int64, pag
 			"phone":                tran.Phone,
 			"details":              tran.Details,
 			"created_at":           tran.CreatedAt,
+			"completed_at":         tran.CompletedAtFormatted,
 			"type":                 tran.Type,
 			"status":               tran.Status,
 		}

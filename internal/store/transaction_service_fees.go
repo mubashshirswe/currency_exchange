@@ -182,7 +182,14 @@ func (s *TransactionServiceFeeStorage) ListByCompany(
 		argN++
 	}
 	query += " ORDER BY f.created_at DESC"
-	query += fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+	// Taqsimlanmagan (pending) yozuvlar sahifalanmaydi — aks holda boshqa
+	// kompaniyaning eskiroq (kam faol) yozuvlari LIMIT tashqarisida qolib,
+	// UI'da butunlay ko'rinmay qoladi (guruh, sanoq, "0 qilish" tugmasi
+	// yo'qoladi). Pending to'plam settle bilan tez-tez tozalanadi — cheklovsiz
+	// olish xavfsiz.
+	if status != ServiceFeeStatusPending {
+		query += fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -249,7 +256,14 @@ func (s *TransactionServiceFeeStorage) ListAll(
 		argN++
 	}
 	query += " ORDER BY f.created_at DESC"
-	query += fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+	// Taqsimlanmagan (pending) yozuvlar sahifalanmaydi — aks holda boshqa
+	// kompaniyaning eskiroq (kam faol) yozuvlari LIMIT tashqarisida qolib,
+	// UI'da butunlay ko'rinmay qoladi (guruh, sanoq, "0 qilish" tugmasi
+	// yo'qoladi). Pending to'plam settle bilan tez-tez tozalanadi — cheklovsiz
+	// olish xavfsiz.
+	if status != ServiceFeeStatusPending {
+		query += fmt.Sprintf(" OFFSET %v LIMIT %v", pagination.Offset, pagination.Limit)
+	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

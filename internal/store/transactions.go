@@ -47,6 +47,12 @@ type Transaction struct {
 	AcceptedAt          *time.Time `json:"-"`
 	AcceptedAtFormatted string     `json:"accepted_at"`
 
+	// CompletedAt — tranzaksiya yakunlangan (olib ketilgan) vaqti, faqat
+	// STATUS_COMPLETED'ga o'tganda bir marta yoziladi (Update'da COALESCE bilan
+	// himoyalangan — keyingi Update'lar uni qayta yozib yubormaydi).
+	CompletedAt          *time.Time `json:"-"`
+	CompletedAtFormatted string     `json:"completed_at"`
+
 	CreatedAt          time.Time `json:"-"`
 	CreatedAtFormatted string    `json:"created_at"`
 }
@@ -55,7 +61,7 @@ type Transaction struct {
 // Tartibi GetById va ConvertRowsToObject dagi Scan tartibi bilan bir xil.
 const transactionColumns = `id, number, delivered_number, delivery_number, service_fee_amount, service_fee_currency, service_fee_details,
 			received_incomes, delivered_outcomes, received_company_id, delivered_company_id, received_user_id, delivered_user_id,
-			phone, details, status, type, accepted_user_id, accepted_company_id, accepted_at, created_at,
+			phone, details, status, type, accepted_user_id, accepted_company_id, accepted_at, completed_at, created_at,
 			(SELECT f.company_id FROM transaction_service_fees f WHERE f.transaction_id = transactions.id LIMIT 1)`
 
 type TransactionStorage struct {
@@ -231,7 +237,7 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 		return err
 	}
 
-	query := `	
+	query := `
 		UPDATE transactions SET
 			service_fee_amount = $1,
 			service_fee_currency = $2,
@@ -245,7 +251,8 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 			phone = $10,
 			details = $11,
 			status = $12,
-			type = $13
+			type = $13,
+			completed_at = CASE WHEN $12 = $17 THEN COALESCE(completed_at, now()) ELSE completed_at END
 		WHERE id = $14 AND status IN ($15, $16)
 	`
 
@@ -268,6 +275,7 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 		tr.ID,
 		STATUS_CREATED,
 		STATUS_ACCEPTED,
+		STATUS_COMPLETED,
 	)
 
 	if err != nil {
@@ -325,6 +333,18 @@ func setAcceptedAt(tr *Transaction, acceptedAt sql.NullTime) {
 	tr.AcceptedAtFormatted = at.In(loc).Format("2006-01-02 15:04:05")
 }
 
+// setCompletedAt — nullable completed_at ni Toshkent vaqtida formatlaydi.
+func setCompletedAt(tr *Transaction, completedAt sql.NullTime) {
+	if !completedAt.Valid {
+		return
+	}
+
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+	at := completedAt.Time
+	tr.CompletedAt = &at
+	tr.CompletedAtFormatted = at.In(loc).Format("2006-01-02 15:04:05")
+}
+
 // GetById — yakunlanmagan tranzaksiya: yaratilgan yoki qabul qilingan holatda.
 func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transaction, error) {
 	query := `
@@ -337,6 +357,7 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 	var deliveredOutcomesJSON []byte
 	var serviceFeeDetails sql.NullString
 	var acceptedAt sql.NullTime
+	var completedAt sql.NullTime
 
 	err := s.db.QueryRowContext(
 		ctx,
@@ -365,6 +386,7 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 		&tr.AcceptedUserId,
 		&tr.AcceptedCompanyId,
 		&acceptedAt,
+		&completedAt,
 		&tr.CreatedAt,
 		&tr.ServiceFeeCompanyId)
 
@@ -374,6 +396,7 @@ func (s *TransactionStorage) GetById(ctx context.Context, id int64) (*Transactio
 
 	tr.ServiceFeeDetails = serviceFeeDetails.String
 	setAcceptedAt(tr, acceptedAt)
+	setCompletedAt(tr, completedAt)
 
 	if err := json.Unmarshal(receivedIncomesJSON, &tr.ReceivedIncomes); err != nil {
 		return nil, err
@@ -568,6 +591,7 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 		tr := &Transaction{}
 		var serviceFeeDetails sql.NullString
 		var acceptedAt sql.NullTime
+		var completedAt sql.NullTime
 		err := rows.Scan(
 			&tr.ID,
 			&tr.Number,
@@ -589,6 +613,7 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 			&tr.AcceptedUserId,
 			&tr.AcceptedCompanyId,
 			&acceptedAt,
+			&completedAt,
 			&tr.CreatedAt,
 			&tr.ServiceFeeCompanyId,
 		)
@@ -599,6 +624,7 @@ func (s *TransactionStorage) ConvertRowsToObject(rows *sql.Rows, err error) ([]T
 
 		tr.ServiceFeeDetails = serviceFeeDetails.String
 		setAcceptedAt(tr, acceptedAt)
+		setCompletedAt(tr, completedAt)
 
 		if err := json.Unmarshal(receivedIncomesJSON, &tr.ReceivedIncomes); err != nil {
 			return nil, err
