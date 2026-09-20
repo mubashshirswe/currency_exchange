@@ -250,9 +250,9 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 			delivered_user_id = $9,
 			phone = $10,
 			details = $11,
-			status = $12,
+			status = $12::bigint,
 			type = $13,
-			completed_at = CASE WHEN $12 = $17 THEN COALESCE(completed_at, now()) ELSE completed_at END
+			completed_at = CASE WHEN $12::bigint = $17::bigint THEN COALESCE(completed_at, now()) ELSE completed_at END
 		WHERE id = $14 AND status IN ($15, $16)
 	`
 
