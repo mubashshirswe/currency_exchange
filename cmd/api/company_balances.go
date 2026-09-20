@@ -18,7 +18,7 @@ func (app *application) GetCompanyBalancesHandler(w http.ResponseWriter, r *http
 	}
 
 	companyID := getIDFromContext(r)
-	if err := app.authorizeCompany(r, t, companyID); err != nil {
+	if err := app.authorizeCompanyView(r, t, companyID); err != nil {
 		app.handleScopeError(w, r, err)
 		return
 	}

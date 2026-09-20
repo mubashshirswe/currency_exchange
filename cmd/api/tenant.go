@@ -96,6 +96,27 @@ func (app *application) authorizeCompany(r *http.Request, t tenant, companyID in
 	return nil
 }
 
+// authorizeCompanyView — faqat o'qish uchun: kompaniya joriy business ichida
+// bo'lsa yetarli, hodim ham boshqa kompaniyalarni ko'ra oladi (masalan ЖАМИ
+// hisoboti business ichidagi HAR bir kompaniya balansini yig'adi — buni faqat
+// egasi emas, har bir hodim ham to'g'ri ko'rishi kerak). Yozish/o'zgartirish
+// amallari hamon [authorizeCompany] (egasi-only) orqali qattiq qoladi.
+func (app *application) authorizeCompanyView(r *http.Request, t tenant, companyID int64) error {
+	if companyID == 0 {
+		return fmt.Errorf("company_id talab qilinadi")
+	}
+
+	ok, err := app.store.Companies.BelongsToBusiness(r.Context(), companyID, t.BusinessID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errForeignBusiness
+	}
+
+	return nil
+}
+
 // authorizeUser — so'ralgan user joriy business ichidami (hodim uchun — o'z kompaniyasi).
 func (app *application) authorizeUser(r *http.Request, t tenant, userID int64) error {
 	if userID == 0 {
