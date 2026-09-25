@@ -722,8 +722,8 @@ type CompanyAmount struct {
 	Remain              float64
 	ServiceFeeAmount    float64
 	ServiceFeeRemaining float64
-	// ServiceFeeDeliveryCount — ServiceFeeRemaining'ga kirgan taqsimlanmagan
-	// yozuvlar orasida "Dostavka" deb belgilanganlarining soni.
+	// ServiceFeeDeliveryCount — kompaniya qabul qilgan yoki yetkazib bergan
+	// "Dostavka" operatsiyalari soni (oxirgi reset'dan keyin, GetDeliveryCount).
 	ServiceFeeDeliveryCount int64
 	// ReceivedCompleted/ReceivedPending — "olingan" tomon (sanaga bog'liq
 	// emas, barcha vaqt), statusga qarab ikkiga bo'lingan: COMPLETED(2)/

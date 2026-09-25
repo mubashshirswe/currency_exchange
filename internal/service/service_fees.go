@@ -101,12 +101,23 @@ func (s *ServiceFeeService) AttachRemainingToCompanyAmounts(
 	}
 
 	remainingMap := map[string]float64{}
-	deliveryCountMap := map[string]int64{}
 	for _, r := range rows {
 		name := nameByID[r.CompanyID]
 		key := name + "|" + strings.ToUpper(r.Currency)
 		remainingMap[key] += float64(r.Remaining)
-		deliveryCountMap[key] += r.DeliveryCount
+	}
+
+	// "Dostavka" soni — xizmat haqini kim olganidan qat'i nazar, kompaniya
+	// qabul qilgan YOKI yetkazib bergan barcha "Dostavka" operatsiyalari
+	// (haqsizlari ham), oxirgi reset'dan keyin. Report sahifasidagi son bilan
+	// bir xil manba. Kompaniyaning birinchi SUM qatoriga bir marta yoziladi.
+	deliveryCountMap := map[string]int64{}
+	for _, c := range companies {
+		count, err := s.store.Transactions.GetDeliveryCount(ctx, c.ID)
+		if err != nil {
+			continue
+		}
+		deliveryCountMap[nameByID[c.ID]+"|SUM"] += count
 	}
 
 	for i := range amounts {
@@ -116,6 +127,7 @@ func (s *ServiceFeeService) AttachRemainingToCompanyAmounts(
 		}
 		if v, ok := deliveryCountMap[key]; ok {
 			amounts[i].ServiceFeeDeliveryCount = v
+			delete(deliveryCountMap, key)
 		}
 	}
 	return nil
@@ -187,6 +199,10 @@ func (s *ServiceFeeService) Settle(
 			companyID, userID, currency, details,
 		)
 		if err != nil {
+			return nil, err
+		}
+		// "0 qilish" — kartadagi "Dostavka" sanog'i ham shu kompaniya uchun nolga.
+		if err := store.NewTransactionStorage(tx).ResetDeliveryCount(ctx, companyID); err != nil {
 			return nil, err
 		}
 		if err := tx.Commit(); err != nil {
