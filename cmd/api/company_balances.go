@@ -68,8 +68,9 @@ func (app *application) GetCompanyDeliveryCountHandler(w http.ResponseWriter, r 
 		return
 	}
 
+	// Faqat o'qish — hodim ham business ichidagi har bir kompaniya sanog'ini ko'radi.
 	companyID := getIDFromContext(r)
-	if err := app.authorizeCompany(r, t, companyID); err != nil {
+	if err := app.authorizeCompanyView(r, t, companyID); err != nil {
 		app.handleScopeError(w, r, err)
 		return
 	}
@@ -80,6 +81,24 @@ func (app *application) GetCompanyDeliveryCountHandler(w http.ResponseWriter, r 
 		return
 	}
 	if err := app.writeResponse(w, http.StatusOK, map[string]int64{"count": count}); err != nil {
+		app.internalServerError(w, r, err)
+	}
+}
+
+// GetBusinessDeliveryCountsHandler — business ichidagi BARCHA kompaniyalar
+// uchun "Dostavka" sanog'i (operatsiyasi yo'q kompaniyalar ham 0 bilan).
+func (app *application) GetBusinessDeliveryCountsHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := app.requireTenant(w, r)
+	if !ok {
+		return
+	}
+
+	rows, err := app.store.Transactions.GetDeliveryCountsByBusiness(r.Context(), t.BusinessID)
+	if err != nil {
+		app.internalServerError(w, r, err)
+		return
+	}
+	if err := app.writeResponse(w, http.StatusOK, rows); err != nil {
 		app.internalServerError(w, r, err)
 	}
 }

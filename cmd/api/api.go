@@ -218,6 +218,7 @@ func (app *application) mount() *chi.Mux {
 			// (guard handler ichida: requireOwner).
 			r.Route("/companies", func(r chi.Router) {
 				r.Get("/all", app.GetAllCompanyHandler)
+				r.Get("/delivery-counts", app.GetBusinessDeliveryCountsHandler)
 				r.Post("/", app.CreateCompanyHandler)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", app.GetCompanyByIdHandler)

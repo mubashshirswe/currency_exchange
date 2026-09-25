@@ -105,28 +105,76 @@ func (s *TransactionStorage) allocateDeliveryNumber(ctx context.Context, company
 	return s.allocateFromCounter(ctx, "transaction_delivery_company_counters", companyID)
 }
 
-// GetDeliveryCount — "Dostavka" hisoblagichining joriy qiymati (received_company_id
-// bo'yicha). Hech qachon "Dostavka" bo'lmagan kompaniya uchun 0 qaytadi.
+// deliveryCountQuery — "Dostavka" operatsiyalarining HAQIQIY soni: kompaniya
+// qabul qilgan (received_company_id) YOKI yetkazib bergan (delivered_company_id)
+// operatsiyalar, oxirgi reset'dan (reset_after_id) keyin yaratilganlari. Ikkala
+// tomon bir kompaniya bo'lsa bir marta sanaladi. Hisoblagich
+// (last_number) faqat raqam berish uchun — u update/delete'da siljib ketadi,
+// shuning uchun sanoq har doim transactions jadvalidan olinadi.
+const deliveryCountQuery = `
+	SELECT COUNT(t.id)::bigint
+	FROM transactions t
+	WHERE (t.received_company_id = c.id OR t.delivered_company_id = c.id)
+	  AND trim(t.service_fee_details) = 'Dostavka'
+	  AND t.id > COALESCE(dc.reset_after_id, 0)`
+
+type CompanyDeliveryCount struct {
+	CompanyID   int64  `json:"company_id"`
+	CompanyName string `json:"company_name"`
+	Count       int64  `json:"count"`
+}
+
+// GetDeliveryCount — kompaniyaning (qabul qilgan yoki yetkazib bergan) oxirgi
+// reset'dan keyingi "Dostavka" operatsiyalari soni. Hech qachon "Dostavka" bo'lmagan kompaniya uchun 0.
 func (s *TransactionStorage) GetDeliveryCount(ctx context.Context, companyID int64) (int64, error) {
-	var number int64
-	query := `SELECT last_number FROM transaction_delivery_company_counters WHERE company_id = $1`
-	err := s.db.QueryRowContext(ctx, query, companyID).Scan(&number)
+	var count int64
+	query := `SELECT (` + deliveryCountQuery + `)
+		FROM companies c
+		LEFT JOIN transaction_delivery_company_counters dc ON dc.company_id = c.id
+		WHERE c.id = $1`
+	err := s.db.QueryRowContext(ctx, query, companyID).Scan(&count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil {
 		return 0, err
 	}
-	return number, nil
+	return count, nil
 }
 
-// ResetDeliveryCount — hisoblagichni 0 ga qaytaradi. Mavjud tranzaksiyalarning
-// delivery_number'iga tegmaydi — faqat KEYINGI "Dostavka" 1 dan qayta boshlanadi.
+// GetDeliveryCountsByBusiness — business ichidagi BARCHA kompaniyalar uchun
+// "Dostavka" soni (operatsiyasi bo'lmagan kompaniyalar ham 0 bilan qaytadi).
+func (s *TransactionStorage) GetDeliveryCountsByBusiness(ctx context.Context, businessID int64) ([]CompanyDeliveryCount, error) {
+	query := `SELECT c.id, COALESCE(c.name, ''), (` + deliveryCountQuery + `)
+		FROM companies c
+		LEFT JOIN transaction_delivery_company_counters dc ON dc.company_id = c.id
+		WHERE c.business_id = $1
+		ORDER BY c.name, c.id`
+	rows, err := s.db.QueryContext(ctx, query, businessID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CompanyDeliveryCount{}
+	for rows.Next() {
+		var r CompanyDeliveryCount
+		if err := rows.Scan(&r.CompanyID, &r.CompanyName, &r.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ResetDeliveryCount — sanoqni 0 ga qaytaradi: hozirgacha bo'lgan barcha
+// tranzaksiyalar sanoqdan chiqadi (reset_after_id) va keyingi "Dostavka"
+// raqami 1 dan qayta boshlanadi. Mavjud delivery_number'larga tegmaydi.
 func (s *TransactionStorage) ResetDeliveryCount(ctx context.Context, companyID int64) error {
 	query := `
-		INSERT INTO transaction_delivery_company_counters (company_id, last_number)
-		VALUES ($1, 0)
-		ON CONFLICT (company_id) DO UPDATE SET last_number = 0
+		INSERT INTO transaction_delivery_company_counters (company_id, last_number, reset_after_id)
+		VALUES ($1, 0, (SELECT COALESCE(MAX(id), 0) FROM transactions))
+		ON CONFLICT (company_id) DO UPDATE
+			SET last_number = 0, reset_after_id = EXCLUDED.reset_after_id
 	`
 	_, err := s.db.ExecContext(ctx, query, companyID)
 	return err
@@ -237,6 +285,26 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 		return err
 	}
 
+	// "Dostavka" belgisi update/yakunlashda yoqilishi yoki o'chirilishi mumkin —
+	// delivery_number shunga moslanadi (yoqilganda raqam beriladi, o'chirilganda 0).
+	var currentDeliveryNumber int64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT delivery_number FROM transactions WHERE id = $1`, tr.ID,
+	).Scan(&currentDeliveryNumber); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if strings.TrimSpace(tr.ServiceFeeDetails) != "Dostavka" {
+		tr.DeliveryNumber = 0
+	} else if currentDeliveryNumber > 0 {
+		tr.DeliveryNumber = currentDeliveryNumber
+	} else {
+		deliveryNumber, err := s.allocateDeliveryNumber(ctx, tr.ReceivedCompanyId)
+		if err != nil {
+			return err
+		}
+		tr.DeliveryNumber = deliveryNumber
+	}
+
 	query := `
 		UPDATE transactions SET
 			service_fee_amount = $1,
@@ -252,7 +320,8 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 			details = $11,
 			status = $12::bigint,
 			type = $13,
-			completed_at = CASE WHEN $12::bigint = $17::bigint THEN COALESCE(completed_at, now()) ELSE completed_at END
+			completed_at = CASE WHEN $12::bigint = $17::bigint THEN COALESCE(completed_at, now()) ELSE completed_at END,
+			delivery_number = $18
 		WHERE id = $14 AND status IN ($15, $16)
 	`
 
@@ -276,6 +345,7 @@ func (s *TransactionStorage) Update(ctx context.Context, tr *Transaction) error 
 		STATUS_CREATED,
 		STATUS_ACCEPTED,
 		STATUS_COMPLETED,
+		tr.DeliveryNumber,
 	)
 
 	if err != nil {

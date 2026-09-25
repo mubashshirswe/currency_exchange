@@ -154,6 +154,7 @@ type Storage struct {
 		Archive(context.Context, int64) error
 		Archived(context.Context, int64, types.Pagination) ([]Transaction, error)
 		GetDeliveryCount(ctx context.Context, companyID int64) (int64, error)
+		GetDeliveryCountsByBusiness(ctx context.Context, businessID int64) ([]CompanyDeliveryCount, error)
 		ResetDeliveryCount(ctx context.Context, companyID int64) error
 	}
 
